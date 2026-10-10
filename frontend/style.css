@@ -1,0 +1,581 @@
+/* ==========================================================================
+   VARIABLES DE TEMA (MODO OSCURO Y MODO CLARO)
+   ========================================================================== */
+:root {
+  /* Paleta Oscura (Por defecto) */
+  --bg-color: #0f172a;
+  --panel-bg: #1e293b;
+  --card-bg: #334155;
+  --text-color: #f8fafc;
+  --text-muted: #94a3b8;
+  --border-color: #475569;
+  
+  /* Colores de Marca y Bus */
+  --bus-body: #1e3a8a;
+  --bus-border: #3b82f6;
+  --color-bus-body: #2563eb;
+  --color-bus-front: #1d4ed8;
+  --color-ventana: #93c5fd;
+
+  /* Estados de los Asientos */
+  --asiento-libre-bg: #064e3b;
+  --asiento-libre-border: #10b981;
+  --asiento-libre-text: #a7f3d0;
+
+  --asiento-proceso-bg: #78350f;
+  --asiento-proceso-border: #f59e0b;
+  --asiento-proceso-text: #fef08a;
+
+  --asiento-comprado-bg: #7f1d1d;
+  --asiento-comprado-border: #ef4444;
+  --asiento-comprado-text: #fecaca;
+
+  --pasillo-bg: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="light"] {
+  /* Paleta Clara */
+  --bg-color: #f1f5f9;
+  --panel-bg: #ffffff;
+  --card-bg: #e2e8f0;
+  --text-color: #0f172a;
+  --text-muted: #64748b;
+  --border-color: #cbd5e1;
+
+  --bus-body: #dbeafe;
+  --bus-border: #2563eb;
+  --color-bus-body: #3b82f6;
+  --color-bus-front: #1d4ed8;
+  --color-ventana: #bfdbfe;
+
+  --asiento-libre-bg: #d1fae5;
+  --asiento-libre-border: #059669;
+  --asiento-libre-text: #065f46;
+
+  --asiento-proceso-bg: #fef3c7;
+  --asiento-proceso-border: #d97706;
+  --asiento-proceso-text: #92400e;
+
+  --asiento-comprado-bg: #fee2e2;
+  --asiento-comprado-border: #dc2626;
+  --asiento-comprado-text: #991b1b;
+
+  --pasillo-bg: rgba(0, 0, 0, 0.04);
+}
+
+/* ==========================================================================
+   ESTILOS GENERALES
+   ========================================================================== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ==========================================================================
+   ENCABEZADO Y MAPA DE RUTA
+   ========================================================================== */
+.encabezado {
+  background-color: var(--panel-bg);
+  border-bottom: 2px solid var(--border-color);
+  padding: 1rem 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.encabezado-contenido {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.bus-svg-animado {
+  width: 90px;
+  height: 45px;
+}
+
+/* Animación de giro de ruedas */
+.rueda {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: girar-rueda 2s linear infinite paused;
+}
+
+body.simulacion-activa .rueda {
+  animation-play-state: running;
+}
+
+@keyframes girar-rueda {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.titulos h1 {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.titulos .subtitulo {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.btn-tema {
+  background: var(--card-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-tema:hover {
+  filter: brightness(1.1);
+}
+
+/* Barra de Ruta Progreso */
+.mapa-ruta {
+  max-width: 1400px;
+  margin: 1rem auto 0;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.ciudad {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.barra-progreso-contenedor {
+  flex: 1;
+  height: 10px;
+  background-color: var(--card-bg);
+  border-radius: 5px;
+  position: relative;
+  overflow: visible;
+}
+
+.barra-progreso {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #10b981);
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.indicador-bus-ruta {
+  position: absolute;
+  top: -12px;
+  left: 0%;
+  transform: translateX(-50%);
+  font-size: 1.2rem;
+  transition: left 0.3s ease;
+}
+
+/* ==========================================================================
+   LAYOUT PRINCIPAL (GRID)
+   ========================================================================== */
+.contenedor-principal {
+  max-width: 1400px;
+  width: 100%;
+  margin: 1.5rem auto;
+  padding: 0 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1.5rem;
+  flex: 1;
+}
+
+/* ==========================================================================
+   SECCIÓN DEL BUS Y LEYENDA
+   ========================================================================== */
+.seccion-bus {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.seccion-bus h2 {
+  font-size: 1.3rem;
+}
+
+.leyenda {
+  display: flex;
+  gap: 1.5rem;
+  background-color: var(--card-bg);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  align-items: center;
+}
+
+.item-leyenda {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.indicador-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.indicador-color.verde { background-color: var(--asiento-libre-border); }
+.indicador-color.amarillo { background-color: var(--asiento-proceso-border); }
+.indicador-color.rojo { background-color: var(--asiento-comprado-border); }
+
+/* BUS Y PISOS */
+.bus-dos-pisos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.piso-bus {
+  background-color: var(--bus-body);
+  border: 3px solid var(--bus-border);
+  border-radius: 24px;
+  padding: 1.2rem;
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.2);
+}
+
+.piso-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px dashed var(--border-color);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.piso-header h3 {
+  font-size: 1.1rem;
+}
+
+.cabina-conductor, .indicador-panoramico {
+  font-size: 0.8rem;
+  background: var(--card-bg);
+  padding: 0.25rem 0.6rem;
+  border-radius: 12px;
+  font-weight: bold;
+}
+
+.piso-cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.zona-escalera {
+  background-color: var(--card-bg);
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  text-align: center;
+  padding: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: var(--text-muted);
+}
+
+/* GRID DE ASIENTOS (4 por fila: 2 + pasillo + 2) */
+.grid-asientos {
+  display: grid;
+  grid-template-columns: 1fr 1fr 24px 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+/* ASIENTO INDIVIDUAL */
+.asiento {
+  background-color: var(--asiento-libre-bg);
+  border: 2px solid var(--asiento-libre-border);
+  color: var(--asiento-libre-text);
+  border-radius: 8px;
+  padding: 0.6rem 0.2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.1rem;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease, background-color 0.3s ease, border-color 0.3s ease;
+  position: relative;
+  min-height: 52px;
+}
+
+.asiento .asiento-icono {
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+/* PASILLO */
+.pasillo-espacio {
+  background-color: var(--pasillo-bg);
+  height: 100%;
+  border-radius: 4px;
+}
+
+/* ESTADOS CSS DEL ASIENTO */
+
+/* 1. Libre */
+.asiento.estado-libre {
+  background-color: var(--asiento-libre-bg);
+  border-color: var(--asiento-libre-border);
+  color: var(--asiento-libre-text);
+}
+
+/* 2. En Proceso (Pulsando) */
+.asiento.estado-proceso {
+  background-color: var(--asiento-proceso-bg);
+  border-color: var(--asiento-proceso-border);
+  color: var(--asiento-proceso-text);
+  animation: pulso-amarillo 1.2s infinite ease-in-out;
+}
+
+@keyframes pulso-amarillo {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+  50% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+/* 3. Comprado */
+.asiento.estado-comprado {
+  background-color: var(--asiento-comprado-bg);
+  border-color: var(--asiento-comprado-border);
+  color: var(--asiento-comprado-text);
+}
+
+/* Animación de choque/sacudida en Rechazo */
+.asiento.animacion-rechazo {
+  animation: choque-error 0.4s ease-in-out;
+}
+
+@keyframes choque-error {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+/* ==========================================================================
+   PANEL LATERAL: CONTROLES, CRONÓMETRO Y LOGS
+   ========================================================================== */
+.panel-lateral {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.tarjeta-panel {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.cronometro-card {
+  text-align: center;
+  background: linear-gradient(135deg, var(--panel-bg), var(--card-bg));
+}
+
+.cronometro-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.badge-estado {
+  background: var(--card-bg);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.badge-estado.activo {
+  background: #065f46;
+  color: #a7f3d0;
+}
+
+.cronometro-valor {
+  font-size: 2.2rem;
+  font-weight: 900;
+  font-family: monospace;
+  letter-spacing: -0.05em;
+}
+
+/* CONTADORES */
+.contadores-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.contador-box {
+  background-color: var(--card-bg);
+  padding: 0.75rem;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.contador-titulo {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.contador-numero {
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+.contador-box.exito .contador-numero { color: var(--asiento-libre-border); }
+.contador-box.libre .contador-numero { color: #3b82f6; }
+.contador-box.alerta .contador-numero { color: var(--asiento-proceso-border); }
+.contador-box.peligro .contador-numero { color: var(--asiento-comprado-border); }
+
+/* CONTROLES DE FUENTE DE EVENTOS */
+.controles-fuente h4, .log-card h4 {
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.grupo-botones-fuente {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.btn-fuente {
+  background: var(--card-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 0.2rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-fuente.activa {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #3b82f6;
+}
+
+.acciones-simulacion {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.btn-accion {
+  padding: 0.6rem;
+  border-radius: 6px;
+  border: none;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-play { background-color: #10b981; color: #042f2e; }
+.btn-stop { background-color: #ef4444; color: #450a0a; }
+
+.btn-accion:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* LOG DE EVENTOS */
+.log-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.log-eventos {
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  height: 180px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  font-family: monospace;
+  font-size: 0.78rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.log-linea {
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.log-linea.sistema { color: var(--text-muted); }
+.log-linea.intenta { color: #fef08a; }
+.log-linea.compra { color: #fecaca; }
+.log-linea.rechazo { color: #f87171; }
+
+/* ==========================================================================
+   DISEÑO RESPONSIVO (PANTALLAS CHICAS / CELULAR)
+   ========================================================================== */
+@media (max-width: 992px) {
+  .contenedor-principal {
+    grid-template-columns: 1fr;
+  }
+
+  .bus-dos-pisos {
+    grid-template-columns: 1fr; /* Pisos apilados en pantalla angosta */
+  }
+
+  .encabezado-contenido {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.8rem;
+  }
+
+  .btn-tema {
+    align-self: flex-end;
+  }
+}
