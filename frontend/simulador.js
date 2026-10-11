@@ -153,3 +153,99 @@ function crearFuenteSimulada() {
     detener
   };
 }
+
+/**
+ * simulador.js - Generador local de eventos aleatorios
+ */
+function crearSimuladorJS() {
+  let timerId = null;
+
+  return {
+    iniciar(config = {}, onEvento, onFin) {
+      this.detener();
+
+      const totalAsientos = config.asientos || 48;
+      const totalPasajeros = config.pasajeros || 80;
+      const duracion = config.segundos || 30;
+
+      const piso1 = Math.floor(totalAsientos / 4);
+      const piso2 = totalAsientos - piso1;
+
+      // Evento de inicio
+      if (onEvento) {
+        onEvento({
+          evento: "inicio",
+          asientos: totalAsientos,
+          piso1: piso1,
+          piso2: piso2,
+          pasajeros: totalPasajeros,
+          duracion: duracion
+        });
+      }
+
+      const asientosOcupados = new Set();
+      let tiempoActual = 0;
+      let pasajeroId = 1;
+
+      timerId = setInterval(() => {
+        tiempoActual += 0.5;
+
+        if (tiempoActual >= duracion || pasajeroId > totalPasajeros) {
+          clearInterval(timerId);
+          if (onEvento) {
+            onEvento({
+              evento: "fin",
+              t: tiempoActual,
+              vendidos: asientosOcupados.size,
+              libres: totalAsientos - asientosOcupados.size,
+              sin_boleto: Math.max(0, totalPasajeros - asientosOcupados.size)
+            });
+          }
+          if (onFin) onFin();
+          return;
+        }
+
+        // Simular intento y compra aleatoria
+        const asientoElegido = Math.floor(Math.random() * totalAsientos) + 1;
+        const piso = asientoElegido <= piso1 ? 1 : 2;
+
+        if (onEvento) {
+          onEvento({
+            evento: "llega",
+            t: tiempoActual,
+            pasajero: pasajeroId,
+            preferencia: piso
+          });
+
+          if (!asientosOcupados.has(asientoElegido)) {
+            asientosOcupados.add(asientoElegido);
+            onEvento({
+              evento: "compra",
+              t: tiempoActual + 0.1,
+              pasajero: pasajeroId,
+              asiento: asientoElegido,
+              piso: piso
+            });
+          } else {
+            onEvento({
+              evento: "rechazo",
+              t: tiempoActual + 0.1,
+              pasajero: pasajeroId,
+              asiento: asientoElegido,
+              motivo: "ocupado"
+            });
+          }
+        }
+
+        pasajeroId++;
+      }, 400);
+    },
+
+    detener() {
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+    }
+  };
+}

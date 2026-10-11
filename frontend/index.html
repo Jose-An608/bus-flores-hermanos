@@ -158,13 +158,13 @@
       <div class="tarjeta-panel controles-fuente">
         <h4>Fuente de Eventos</h4>
         <div class="grupo-botones-fuente">
-          <button id="btn-fuente-simulada" class="btn-fuente activa">🎭 Simulada</button>
-          <button id="btn-fuente-envivo" class="btn-fuente">📡 En Vivo</button>
-          <button id="btn-fuente-grabacion" class="btn-fuente">📁 Grabación</button>
+          <button id="btn-fuente-simulada" class="btn-fuente activa" onclick="cambiarFuente('simulado', this)">🎭 Simulada</button>
+          <button id="btn-fuente-envivo" class="btn-fuente" onclick="cambiarFuente('envivo', this)">📡 En Vivo</button>
+          <button id="btn-fuente-grabacion" class="btn-fuente" onclick="cambiarFuente('grabacion', this)">📁 Grabación</button>
         </div>
         <div class="acciones-simulacion">
-          <button id="btn-iniciar" class="btn-accion btn-play">▶ Iniciar</button>
-          <button id="btn-detener" class="btn-accion btn-stop" disabled>⏹ Detener</button>
+          <button id="btn-iniciar" class="btn-accion btn-play" onclick="iniciarSimulacion()">▶ Iniciar</button>
+          <button id="btn-detener" class="btn-accion btn-stop" onclick="detenerSimulacion()" disabled>■ Detener</button>
         </div>
       </div>
 
@@ -179,7 +179,7 @@
     </aside>
 
   </main>
-  
+
 <!-- Modal de Resumen Final -->
 <div id="modal-resumen" class="modal-overlay hidden" role="dialog" aria-labelledby="modal-titulo" aria-modal="true">
   <div class="modal-content">

@@ -1,74 +1,46 @@
 /**
- * fuentes.js - Fuentes de eventos para la simulación (Etapa 5)
- * Implementa:
- *  1. crearFuenteEnVivo(): Conexión real con servidor Node.js vía SSE (EventSource)
- *  2. crearFuenteGrabacion(): Reproductor de archivos .jsonl registrados
+ * fuentes.js - Fuentes de eventos para la simulación
+ *  1. crearFuenteSimulada(): Simulación local en JS
+ *  2. crearFuenteEnVivo(): Conexión real SSE con backend Node.js / C
+ *  3. crearFuenteGrabacion(): Reproductor de archivos .jsonl respetando tiempos 't'
  */
 
 // ==========================================
-// 1. FUENTE EN VIVO (Server-Sent Events)
+// 1. FUENTE SIMULADA (JavaScript Local)
+// ==========================================
+function crearFuenteSimulada() {
+  let instanciaSimulador = null;
+
+  return {
+    iniciar(config = {}, onEvento, onFin) {
+      this.detener();
+      if (typeof crearSimuladorJS === 'function') {
+        instanciaSimulador = crearSimuladorJS();
+        instanciaSimulador.iniciar(config, onEvento, onFin);
+      } else if (typeof crearSimulador === 'function') {
+        instanciaSimulador = crearSimulador();
+        instanciaSimulador.iniciar(config, onEvento, onFin);
+      } else {
+        console.error("No se encontró la función del simulador local en simulador.js");
+        if (typeof onFin === 'function') onFin();
+      }
+    },
+
+    detener() {
+      if (instanciaSimulador && typeof instanciaSimulador.detener === 'function') {
+        instanciaSimulador.detener();
+        instanciaSimulador = null;
+      }
+    }
+  };
+}
+
+// ==========================================
+// 2. FUENTE EN VIVO (Server-Sent Events)
 // ==========================================
 function crearFuenteEnVivo() {
   let eventSource = null;
   let ejecutando = false;
-
-  function iniciar(config = {}, onEvento, onCierre) {
-    detener();
-    ejecutando = true;
-
-    // Construir la URL con los parámetros del formulario
-    const params = new URLSearchParams({
-      asientos: config.asientos || 48,
-      segundos: config.segundos || 30,
-      pasajeros: config.pasajeros || 80,
-      semilla: config.semilla || ""
-    });
-
-    const url = `/iniciar?${params.toString()}`;
-
-    try {
-      eventSource = new EventSource(url);
-
-      // Escuchar eventos SSE recibidos del servidor Node.js
-      eventSource.onmessage = (e) => {
-        if (!ejecutando) return;
-        try {
-          const eventoObj = JSON.parse(e.data);
-          
-          if (typeof onEvento === "function") {
-            onEvento(eventoObj);
-          }
-
-          // Si el evento es "fin", cerrar la conexión para evitar autoreconexión de SSE
-          if (eventoObj.evento === "fin") {
-            cerrarConexion();
-            if (typeof onCierre === "function") onCierre();
-          }
-        } catch (err) {
-          console.error("Error al parsear JSON del evento SSE:", err);
-        }
-      };
-
-      // Evento explícito de cierre enviado por el backend
-      eventSource.addEventListener("cierre", () => {
-        cerrarConexion();
-        if (typeof onCierre === "function") onCierre();
-      });
-
-      // Manejo de errores de conexión
-      eventSource.onerror = (err) => {
-        console.error("Error en conexión SSE:", err);
-        cerrarConexion();
-        alert("No se pudo conectar con el servidor. ¿Verificaste que 'node server.js' esté corriendo en la terminal?");
-        if (typeof onCierre === "function") onCierre();
-      };
-
-    } catch (err) {
-      console.error("No se pudo instanciar EventSource:", err);
-      alert("Error al iniciar EventSource. Verifica si estás ejecutando en un servidor HTTP válido.");
-      if (typeof onCierre === "function") onCierre();
-    }
-  }
 
   function cerrarConexion() {
     ejecutando = false;
@@ -78,10 +50,62 @@ function crearFuenteEnVivo() {
     }
   }
 
+  function iniciar(config = {}, onEvento, onFin) {
+    detener();
+    ejecutando = true;
+
+    // Asegurar semilla única para que cada corrida en C genere datos distintos
+    const semilla = config.semilla || Math.floor(Math.random() * 900000 + 100000).toString();
+
+    const params = new URLSearchParams({
+      asientos: config.asientos || 48,
+      segundos: config.segundos || 30,
+      pasajeros: config.pasajeros || 80,
+      semilla: semilla
+    });
+
+    const url = `/iniciar?${params.toString()}`;
+
+    try {
+      eventSource = new EventSource(url);
+
+      eventSource.onmessage = (e) => {
+        if (!ejecutando) return;
+        try {
+          const ev = JSON.parse(e.data);
+          if (typeof onEvento === "function") onEvento(ev);
+
+          // Si el evento es "fin", cerrar SSE para evitar la reconexión automática
+          if (ev.evento === "fin") {
+            cerrarConexion();
+            if (typeof onFin === "function") onFin();
+          }
+        } catch (err) {
+          console.error("Error al parsear JSON del evento SSE:", err);
+        }
+      };
+
+      eventSource.addEventListener("cierre", () => {
+        cerrarConexion();
+        if (typeof onFin === "function") onFin();
+      });
+
+      eventSource.onerror = (err) => {
+        console.error("Error en conexión SSE:", err);
+        cerrarConexion();
+        alert("No se pudo conectar con el servidor. ¿Verificaste que 'node server.js' esté corriendo en la terminal?");
+        if (typeof onFin === "function") onFin();
+      };
+
+    } catch (err) {
+      console.error("No se pudo instanciar EventSource:", err);
+      if (typeof onFin === "function") onFin();
+    }
+  }
+
   function detener() {
     cerrarConexion();
-    // Notificar al servidor que se abortó la simulación
-    fetch("/detener", { method: "POST" }).catch(() => {});
+    fetch("/detener").catch(() => {});
   }
 
   return {
@@ -90,20 +114,21 @@ function crearFuenteEnVivo() {
   };
 }
 
-
 // ==========================================
-// 2. FUENTE GRABACIÓN (Reproductor .jsonl)
+// 3. FUENTE GRABACIÓN (Reproductor .jsonl por tiempo t)
 // ==========================================
 function crearFuenteGrabacion() {
   let timers = [];
   let ejecutando = false;
-  let velocidad = 1; // Factor de velocidad: 1x, 2x, 4x
+  let velocidad = 1;
 
-  function setVelocidad(v) {
-    velocidad = v || 1;
+  function detener() {
+    ejecutando = false;
+    timers.forEach(t => clearTimeout(t));
+    timers = [];
   }
 
-  function iniciar(config = {}, onEvento, onCierre) {
+  function iniciar(config = {}, onEvento, onFin) {
     detener();
     ejecutando = true;
 
@@ -117,7 +142,6 @@ function crearFuenteGrabacion() {
       .then(texto => {
         if (!ejecutando) return;
 
-        // Parsear líneas .jsonl
         const lineas = texto.split("\n").map(l => l.trim()).filter(l => l.length > 0);
         const eventos = [];
 
@@ -125,29 +149,27 @@ function crearFuenteGrabacion() {
           try {
             eventos.push(JSON.parse(linea));
           } catch (e) {
-            console.warn("Línea omitida por error de formato JSON:", linea);
+            console.warn("Línea omitida por formato no válido:", linea);
           }
         }
 
         if (eventos.length === 0) {
           alert("El archivo de grabación está vacío o no contiene eventos válidos.");
-          if (typeof onCierre === "function") onCierre();
+          if (typeof onFin === "function") onFin();
           return;
         }
 
-        // Programar reproducción respetando la propiedad "t" y el multiplicador de velocidad
+        // Programar reproducción respetando el tiempo 't' real de cada evento
         eventos.forEach(ev => {
-          const tMs = (ev.t || 0) * 1000 / velocidad;
+          const tMs = ((ev.t || 0) * 1000) / velocidad;
           const timer = setTimeout(() => {
             if (!ejecutando) return;
 
-            if (typeof onEvento === "function") {
-              onEvento(ev);
-            }
+            if (typeof onEvento === "function") onEvento(ev);
 
             if (ev.evento === "fin") {
               detener();
-              if (typeof onCierre === "function") onCierre();
+              if (typeof onFin === "function") onFin();
             }
           }, tMs);
 
@@ -158,19 +180,13 @@ function crearFuenteGrabacion() {
         console.error("Error al reproducir la grabación:", err);
         alert(`No se encontró el archivo de grabación (${rutaGrabacion}). Puedes usar la opción Simulada o En Vivo.`);
         detener();
-        if (typeof onCierre === "function") onCierre();
+        if (typeof onFin === "function") onFin();
       });
-  }
-
-  function detener() {
-    ejecutando = false;
-    timers.forEach(t => clearTimeout(t));
-    timers = [];
   }
 
   return {
     iniciar,
     detener,
-    setVelocidad
+    setVelocidad: (v) => { velocidad = v || 1; }
   };
 }

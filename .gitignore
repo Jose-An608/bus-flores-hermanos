@@ -1,5 +1,7 @@
 node_modules/
-.DS_Store
-Thumbs.db
-*.o
 backend/bus
+bus
+*.o
+*.log
+.DS_Store
+backend/bus_sim

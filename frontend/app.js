@@ -7,37 +7,36 @@
 const estadoApp = {
   configuracion: null,
   asientos: new Map(), // id -> elemento DOM
+  asientosComprados: new Set(), // Registro persistente de asientos vendidos
   contadores: {
     pasajeros: 0,
     vendidos: 0,
-    libres: 0,
+    libres: 48,
     rechazos: 0,
     sinBoleto: 0
   }
 };
 
 /**
- * Inicialización de controles del tema (Oscuro / Claro)
+ * Control del tema (Oscuro / Claro)
  */
 function inicializarTema() {
   const btnTema = document.getElementById('btn-tema');
+  if (!btnTema) return;
   const textoTema = btnTema.querySelector('.texto-tema');
   const iconoTema = btnTema.querySelector('.icono-tema');
 
   btnTema.addEventListener('click', () => {
     const temaActual = document.body.getAttribute('data-theme');
     const nuevoTema = temaActual === 'dark' ? 'light' : 'dark';
-    
     document.body.setAttribute('data-theme', nuevoTema);
-    textoTema.textContent = nuevoTema === 'dark' ? 'Modo Oscuro' : 'Modo Claro';
-    iconoTema.textContent = nuevoTema === 'dark' ? '🌙' : '☀️';
+    if (textoTema) textoTema.textContent = nuevoTema === 'dark' ? 'Modo Oscuro' : 'Modo Claro';
+    if (iconoTema) iconoTema.textContent = nuevoTema === 'dark' ? '🌙' : '☀️';
   });
 }
 
 /**
- * Función principal para renderizar la estructura del Bus de 2 Pisos.
- * Recibe un objeto de configuración que cumple con el contrato del backend.
- * @param {Object} config - { asientos: number, piso1: number, piso2: number, ... }
+ * Renderiza la estructura visual del Bus de 2 Pisos
  */
 function dibujarBus(config) {
   estadoApp.configuracion = config;
@@ -45,62 +44,48 @@ function dibujarBus(config) {
   const containerPiso1 = document.getElementById('grid-piso-1');
   const containerPiso2 = document.getElementById('grid-piso-2');
 
-  // Limpiar contenedores
+  if (!containerPiso1 || !containerPiso2) return;
+
   containerPiso1.innerHTML = '';
   containerPiso2.innerHTML = '';
   estadoApp.asientos.clear();
+  estadoApp.asientosComprados.clear();
 
-  const totalAsientos = config.asientos;
-  // Regla del contrato: piso1 = n / 4 (división entera)
+  const totalAsientos = config.asientos || 48;
   const limitePiso1 = config.piso1 || Math.floor(totalAsientos / 4);
 
-  // Inicializar contador de asientos libres
   estadoApp.contadores.libres = totalAsientos;
   actualizarContadoresUI();
 
-  // Generar asientos Piso 1 (IDs: 1..piso1)
   generarGridPiso(containerPiso1, 1, limitePiso1);
-
-  // Generar asientos Piso 2 (IDs: piso1+1..totalAsientos)
   generarGridPiso(containerPiso2, limitePiso1 + 1, totalAsientos);
-
-  agregarLog(`Bus generado con ${totalAsientos} asientos (Piso 1: ${limitePiso1}, Piso 2: ${totalAsientos - limitePiso1})`);
 }
 
-/**
- * Genera la cuadrícula de asientos para un piso específico (4 asientos por fila: 2 + pasillo + 2)
- */
 function generarGridPiso(contenedor, idInicio, idFin) {
   let contadorColumna = 0;
 
   for (let id = idInicio; id <= idFin; id++) {
-    // Crear elemento asiento
     const elAsiento = document.createElement('div');
-    elAsiento.className = 'asiento estado-libre';
+    elAsiento.className = 'asiento estado-libre libre';
     elAsiento.setAttribute('data-id', id);
+    elAsiento.setAttribute('data-asiento', id);
 
-    // Etiqueta del número
     const numSpan = document.createElement('span');
     numSpan.className = 'asiento-numero';
     numSpan.textContent = id;
 
-    // Ícono diferenciador de estado
     const iconoSpan = document.createElement('span');
     iconoSpan.className = 'asiento-icono';
-    iconoSpan.textContent = '✓'; // Ícono libre
+    iconoSpan.textContent = '✓';
 
     elAsiento.appendChild(numSpan);
     elAsiento.appendChild(iconoSpan);
 
-    // Insertar en contenedor
     contenedor.appendChild(elAsiento);
-    
-    // Guardar referencia en memoria
-    estadoApp.asientos.set(id, elAsiento);
+    estadoApp.asientos.set(Number(id), elAsiento);
 
     contadorColumna++;
 
-    // Insertar separador de pasillo después del segundo asiento de cada fila
     if (contadorColumna % 2 === 0 && contadorColumna % 4 !== 0) {
       const pasillo = document.createElement('div');
       pasillo.className = 'pasillo-espacio';
@@ -109,61 +94,101 @@ function generarGridPiso(contenedor, idInicio, idFin) {
   }
 }
 
+function reseteaEstadosVisuales() {
+  estadoApp.asientosComprados.clear();
+  estadoApp.asientos.forEach((elAsiento) => {
+    elAsiento.className = 'asiento estado-libre libre';
+    const icono = elAsiento.querySelector('.asiento-icono');
+    if (icono) icono.textContent = '✓';
+  });
+}
+
 /**
- * Cambia el estado visual de un asiento específico.
- * @param {number} asientoId - ID del asiento (1..n)
- * @param {string} nuevoEstado - 'libre' | 'en-proceso' | 'comprado'
- * @param {boolean} conError - Si debe ejecutar animación de choque/rechazo
+ * REGLA DE ORO: Un asiento COMPRADO nunca vuelve a ser LIBRE
  */
 function actualizarEstadoAsiento(asientoId, nuevoEstado, conError = false) {
-  const elAsiento = estadoApp.asientos.get(asientoId);
+  const idNum = Number(asientoId);
+  if (!idNum) return;
+
+  if (estadoApp.asientosComprados.has(idNum) && nuevoEstado !== 'comprado') {
+    if (conError) {
+      const el = estadoApp.asientos.get(idNum) || document.querySelector(`[data-id="${idNum}"]`);
+      if (el) {
+        el.classList.add('animacion-rechazo');
+        setTimeout(() => el.classList.remove('animacion-rechazo'), 400);
+      }
+    }
+    return;
+  }
+
+  let elAsiento = estadoApp.asientos.get(idNum);
+  if (!elAsiento) {
+    elAsiento = document.querySelector(`[data-id="${idNum}"], [data-asiento="${idNum}"]`);
+  }
   if (!elAsiento) return;
 
   const icono = elAsiento.querySelector('.asiento-icono');
 
-  // Limpiar clases previas
-  elAsiento.classList.remove('estado-libre', 'estado-proceso', 'estado-comprado');
+  elAsiento.classList.remove('estado-libre', 'estado-proceso', 'estado-comprado', 'libre', 'en-proceso', 'comprado', 'ocupado');
 
   switch (nuevoEstado) {
     case 'libre':
-      elAsiento.classList.add('estado-libre');
+      elAsiento.classList.add('estado-libre', 'libre');
       if (icono) icono.textContent = '✓';
       break;
     case 'en-proceso':
-      elAsiento.classList.add('estado-proceso');
+      elAsiento.classList.add('estado-proceso', 'en-proceso');
       if (icono) icono.textContent = '⏳';
       break;
     case 'comprado':
-      elAsiento.classList.add('estado-comprado');
+      estadoApp.asientosComprados.add(idNum);
+      elAsiento.classList.add('estado-comprado', 'comprado');
       if (icono) icono.textContent = '🔒';
       break;
   }
 
-  // Animación de choque si hubo rechazo
   if (conError) {
     elAsiento.classList.add('animacion-rechazo');
-    setTimeout(() => {
-      elAsiento.classList.remove('animacion-rechazo');
-    }, 400);
+    setTimeout(() => elAsiento.classList.remove('animacion-rechazo'), 400);
   }
 }
 
-/**
- * Actualiza los contadores en la interfaz gráfica
- */
-function actualizarContadoresUI() {
-  document.getElementById('cnt-pasajeros').textContent = estadoApp.contadores.pasajeros;
-  document.getElementById('cnt-vendidos').textContent = estadoApp.contadores.vendidos;
-  document.getElementById('cnt-libres').textContent = estadoApp.contadores.libres;
-  document.getElementById('cnt-rechazos').textContent = estadoApp.contadores.rechazos;
-  document.getElementById('cnt-sin-boleto').textContent = estadoApp.contadores.sinBoleto;
+function marcarAsientoEnProceso(asientoId) {
+  actualizarEstadoAsiento(asientoId, 'en-proceso');
 }
 
-/**
- * Añade una línea al log visual del frontend
- */
+function marcarAsientoComprado(asientoId) {
+  actualizarEstadoAsiento(asientoId, 'comprado');
+}
+
+function animarRechazo(asientoId) {
+  actualizarEstadoAsiento(asientoId, 'rechazo_anim', true);
+}
+
+function actualizarContadoresUI() {
+  const p = estadoApp.contadores.pasajeros;
+  const v = estadoApp.contadores.vendidos;
+  const l = estadoApp.contadores.libres;
+  const r = estadoApp.contadores.rechazos;
+  const sb = estadoApp.contadores.sinBoleto;
+
+  const setTexto = (ids, val) => {
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    });
+  };
+
+  setTexto(['cnt-pasajeros', 'cant-pasajeros'], p);
+  setTexto(['cnt-vendidos', 'cant-vendidos'], v);
+  setTexto(['cnt-libres', 'cant-libres'], l);
+  setTexto(['cnt-rechazos', 'cant-rechazos'], r);
+  setTexto(['cnt-sin-boleto', 'cant-sin-boleto'], sb);
+}
+
 function agregarLog(mensaje, tipo = 'sistema') {
   const logContenedor = document.getElementById('log-eventos');
+  if (!logContenedor) return;
   const linea = document.createElement('div');
   linea.className = `log-linea ${tipo}`;
   linea.textContent = mensaje;
@@ -171,122 +196,140 @@ function agregarLog(mensaje, tipo = 'sistema') {
   logContenedor.scrollTop = logContenedor.scrollHeight;
 }
 
-// Inicialización básica al cargar el documento
-document.addEventListener('DOMContentLoaded', () => {
-  inicializarTema();
-
-  // Llamada de prueba inicial con la configuración estándar del contrato (48 asientos)
-  dibujarBus({
-    asientos: 48,
-    piso1: 12,
-    piso2: 36,
-    pasajeros: 80,
-    duracion: 30
-  });
-});
-
 // ==========================================
-// ETAPA 6: SINTETIZADOR DE SONIDOS (WEB AUDIO API)
+// SINTETIZADOR DE SONIDOS
 // ==========================================
 let sonidoHabilitado = false;
 let audioCtx = null;
 
-function toggleSonido() {
-  sonidoHabilitado = !sonidoHabilitado;
-  const btn = document.getElementById("btn-sonido");
-  if (btn) btn.innerText = sonidoHabilitado ? "🔊 Sonido: ON" : "🔇 Sonido: OFF";
-}
-
 function reproducirEfecto(tipo) {
   if (!sonidoHabilitado) return;
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
 
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-
-  if (tipo === "compra") {
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-    osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12); // A5
-    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.12);
-  } else if (tipo === "rechazo") {
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(160, audioCtx.currentTime);
-    osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + 0.15);
-    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.15);
-  }
+    if (tipo === "compra") {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.12);
+    } else if (tipo === "rechazo") {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(160, audioCtx.currentTime);
+      osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.15);
+    }
+  } catch (e) {}
 }
 
 // ==========================================
-// ETAPA 6: RESUMEN Y CELEBRACIÓN
+// MODAL DE RESUMEN
 // ==========================================
 function mostrarResumen(evFinal) {
-  const vendidos = evFinal.vendidos || 0;
-  const libres = evFinal.libres || 0;
-  const sinBoleto = evFinal.sin_boleto || 0;
-  const totalAsientos = vendidos + libres;
+  const modal = document.getElementById("modal-resumen");
+  if (!modal) return;
 
-  const pctOcupacion = totalAsientos > 0 ? ((vendidos / totalAsientos) * 100).toFixed(1) : 0;
-  const totalIntentos = (evFinal.total_intentos || vendidos + (evFinal.rechazos || 0));
-  const tasaExito = totalIntentos > 0 ? ((vendidos / totalIntentos) * 100).toFixed(1) : (vendidos > 0 ? 100 : 0);
+  // 1. Obtener la cantidad real de asientos comprados en memoria
+  const compradosReales = estadoApp.asientosComprados.size > 0 
+    ? estadoApp.asientosComprados.size 
+    : estadoApp.contadores.vendidos;
 
-  document.getElementById("res-vendidos").innerText = vendidos;
-  document.getElementById("res-libres").innerText = libres;
-  document.getElementById("res-sin-boleto").innerText = sinBoleto;
-  document.getElementById("res-ocupacion").innerText = `${pctOcupacion}%`;
-  document.getElementById("res-exito").innerText = `${tasaExito}%`;
+  const vendidos = (evFinal && evFinal.vendidos > 0) ? evFinal.vendidos : compradosReales;
+  const libres = 48 - vendidos;
+  
+  // 2. CÁLCULO DIRECTO: Pasajeros totales menos los que lograron comprar
+  const totalPasajeros = estadoApp.contadores.pasajeros || (evFinal && evFinal.pasajeros) || 80;
+  const sinBoleto = Math.max(0, totalPasajeros - vendidos);
 
-  // Renderizar cuadritos de asientos vendidos por piso
-  const chipsP1 = document.getElementById("chips-piso1");
-  const chipsP2 = document.getElementById("chips-piso2");
+  // Sincronizar el contador global y actualizar el panel lateral de la derecha
+  estadoApp.contadores.sinBoleto = sinBoleto;
+  actualizarContadoresUI();
+  
+  const pctOcupacion = ((vendidos / 48) * 100).toFixed(1);
+  const tasaExito = totalPasajeros > 0 ? ((vendidos / totalPasajeros) * 100).toFixed(1) : "0.0";
+
+  // 3. Renderizar valores numéricos en el Modal
+  const setTexto = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+  setTexto("res-vendidos", vendidos);
+  setTexto("res-libres", libres);
+  setTexto("res-sin-boleto", sinBoleto);
+  setTexto("res-ocupacion", `${pctOcupacion}%`);
+  setTexto("res-exito", `${tasaExito}%`);
+
+  // 4. Ubicar contenedores de chips sin alterar los títulos de los pisos
+  let chipsP1 = document.getElementById("chips-piso1") || document.getElementById("resumen-piso1");
+  let chipsP2 = document.getElementById("chips-piso2") || document.getElementById("resumen-piso2");
+
+  if (!chipsP1 || !chipsP2) {
+    const contenedoresChips = modal.querySelectorAll('.chips');
+    if (contenedoresChips.length >= 2) {
+      chipsP1 = contenedoresChips[0];
+      chipsP2 = contenedoresChips[1];
+    }
+  }
+
   if (chipsP1) chipsP1.innerHTML = "";
   if (chipsP2) chipsP2.innerHTML = "";
 
-  const listaVendidos = evFinal.asientos_vendidos || [];
-  const piso1Max = 12; // Asientos piso 1
+  const listaVendidos = (evFinal && evFinal.asientos_vendidos && evFinal.asientos_vendidos.length > 0)
+    ? evFinal.asientos_vendidos
+    : Array.from(estadoApp.asientosComprados);
 
-  listaVendidos.sort((a, b) => a - b).forEach(aNum => {
-    const chip = document.createElement("span");
-    chip.className = "chip-asiento";
-    chip.innerText = `#${aNum}`;
+  const piso1Max = estadoApp.configuracion ? (estadoApp.configuracion.piso1 || 12) : 12;
 
-    if (aNum <= piso1Max && chipsP1) {
-      chipsP1.appendChild(chip);
-    } else if (chipsP2) {
-      chipsP2.appendChild(chip);
-    }
-  });
+  if (listaVendidos.length > 0) {
+    listaVendidos.sort((a, b) => a - b).forEach(aNum => {
+      const chip = document.createElement("span");
+      chip.className = "chip-asiento";
+      chip.innerText = `#${aNum}`;
 
-  // Mostrar Modal
-  const modal = document.getElementById("modal-resumen");
-  if (modal) modal.classList.remove("hidden");
+      if (aNum <= piso1Max && chipsP1) {
+        chipsP1.appendChild(chip);
+      } else if (chipsP2) {
+        chipsP2.appendChild(chip);
+      }
+    });
+  }
+
+  if (chipsP1 && chipsP1.children.length === 0) {
+    chipsP1.innerHTML = '<span class="vacio" style="color:#94a3b8; font-size: 0.85rem;">Ningún asiento vendido</span>';
+  }
+  if (chipsP2 && chipsP2.children.length === 0) {
+    chipsP2.innerHTML = '<span class="vacio" style="color:#94a3b8; font-size: 0.85rem;">Ningún asiento vendido</span>';
+  }
+
+  modal.classList.remove("hidden");
+  modal.classList.add("activo");
 }
 
 function cerrarModal() {
   const modal = document.getElementById("modal-resumen");
-  if (modal) modal.classList.add("hidden");
-}
-
-function reiniciarYConfigurar() {
-  cerrarModal();
-  if (typeof reiniciarSimulacion === "function") {
-    reiniciarSimulacion();
+  if (modal) {
+    modal.classList.add("hidden");
+    modal.classList.remove("activo");
   }
 }
 
 // ==========================================
-// PROCESADOR PRINCIPAL DE EVENTOS
+// PROCESADOR DE EVENTOS
 // ==========================================
+// Dentro de procesarEvento(ev)
 function procesarEvento(ev) {
   if (!ev || !ev.evento) return;
+
+  // Actualizar constantemente el contador de tiempo en pantalla
+  if (ev.t !== undefined && ev.t !== null) {
+    actualizarRelojUI(ev.t);
+  }
 
   switch (ev.evento) {
     case "inicio":
@@ -294,32 +337,191 @@ function procesarEvento(ev) {
       break;
 
     case "llega":
-      agregarLog(`[t=${ev.t}s] Pasajero ${ev.pasajero} llegó (Piso ${ev.preferencia})`, "info");
+      estadoApp.contadores.pasajeros++;
+      actualizarContadoresUI();
+      agregarLog(`[t=${ev.t}s] Pasajero ${ev.pasajero} llegó (Piso ${ev.preferencia || 1})`, "info");
       break;
 
     case "intenta":
-      marcarAsientoEnProceso(ev.asiento, ev.pasajero);
+      marcarAsientoEnProceso(ev.asiento);
       break;
 
     case "compra":
-      reproducirEfecto("compra"); // 🔊 Sonido compra
-      marcarAsientoComprado(ev.asiento, ev.pasajero, ev.piso);
+      estadoApp.contadores.vendidos++;
+      if (estadoApp.contadores.libres > 0) estadoApp.contadores.libres--;
+      actualizarContadoresUI();
+      reproducirEfecto("compra");
+      marcarAsientoComprado(ev.asiento);
       agregarLog(`[t=${ev.t}s] ✅ Pasajero ${ev.pasajero} compró asiento #${ev.asiento}`, "exito");
       break;
 
     case "rechazo":
-      reproducirEfecto("rechazo"); // 🔊 Sonido rechazo
+      estadoApp.contadores.rechazos++;
+      actualizarContadoresUI();
+      reproducirEfecto("rechazo");
       animarRechazo(ev.asiento);
       agregarLog(`[t=${ev.t}s] ❌ Asiento #${ev.asiento} ocupado`, "error");
       break;
 
     case "sin_boleto":
+      estadoApp.contadores.sinBoleto++;
+      actualizarContadoresUI();
       agregarLog(`[t=${ev.t}s] ⚠️ Pasajero ${ev.pasajero} sin boleto`, "alerta");
       break;
 
     case "fin":
       agregarLog(`[t=${ev.t}s] 🏁 Simulación finalizada`, "sistema");
-      mostrarResumen(ev); // 📊 Abrir modal
+      actualizarEstadoBotones(false);
+      mostrarResumen(ev);
       break;
   }
+}
+
+let fuenteSeleccionada = 'simulado';
+let fuenteInstanciaActiva = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  inicializarTema();
+
+  dibujarBus({
+    asientos: 48,
+    piso1: 12,
+    piso2: 36,
+    pasajeros: 80,
+    duracion: 30
+  });
+
+  const botones = document.querySelectorAll('button');
+  
+  botones.forEach(btn => {
+    const texto = btn.innerText.trim().toLowerCase();
+    
+    if (texto.includes('simulada')) {
+      btn.addEventListener('click', (e) => cambiarFuente('simulado', e.currentTarget));
+    } else if (texto.includes('en vivo')) {
+      btn.addEventListener('click', (e) => cambiarFuente('envivo', e.currentTarget));
+    } else if (texto.includes('grabación') || texto.includes('grabacion')) {
+      btn.addEventListener('click', (e) => cambiarFuente('grabacion', e.currentTarget));
+    }
+  });
+});
+
+function cambiarFuente(tipo, elemento) {
+  fuenteSeleccionada = tipo;
+
+  const contenedor = elemento.parentElement;
+  if (contenedor) {
+    const hermanos = contenedor.querySelectorAll('button');
+    hermanos.forEach(b => {
+      b.style.backgroundColor = '#334155';
+      b.style.color = '#94a3b8';
+    });
+  }
+
+  elemento.style.backgroundColor = '#2563eb';
+  elemento.style.color = '#ffffff';
+}
+
+function actualizarEstadoBotones(enEjecucion) {
+  const btnIniciar = document.getElementById('btn-iniciar');
+  const btnDetener = document.getElementById('btn-detener');
+
+  if (btnIniciar) btnIniciar.disabled = enEjecucion;
+  if (btnDetener) btnDetener.disabled = !enEjecucion;
+}
+
+// Dentro de limpiarTablero()
+function limpiarTablero() {
+  estadoApp.contadores = {
+    pasajeros: 0,
+    vendidos: 0,
+    libres: 48,
+    rechazos: 0,
+    sinBoleto: 0
+  };
+  actualizarContadoresUI();
+
+  // Resetear reloj a 0.00 s antes de empezar
+  actualizarRelojUI(0);
+
+  reseteaEstadosVisuales();
+
+  const log = document.getElementById('log-eventos');
+  if (log) {
+    log.innerHTML = '<div class="log-linea sistema">[0.00s] Listo para iniciar la simulación.</div>';
+  }
+
+  cerrarModal();
+}
+
+function iniciarSimulacion() {
+  limpiarTablero();
+
+  if (fuenteInstanciaActiva) {
+    fuenteInstanciaActiva.detener();
+  }
+
+  const config = {
+    asientos: 48,
+    segundos: 30,
+    pasajeros: 80,
+    semilla: Math.floor(Math.random() * 1000000).toString()
+  };
+
+  actualizarEstadoBotones(true);
+
+  if (fuenteSeleccionada === 'envivo') {
+    fuenteInstanciaActiva = crearFuenteEnVivo();
+  } else if (fuenteSeleccionada === 'grabacion') {
+    fuenteInstanciaActiva = crearFuenteGrabacion();
+  } else {
+    fuenteInstanciaActiva = typeof crearFuenteSimulada === 'function' 
+      ? crearFuenteSimulada() 
+      : (typeof crearSimuladorJS === 'function' ? crearSimuladorJS() : null);
+  }
+
+  if (fuenteInstanciaActiva) {
+    fuenteInstanciaActiva.iniciar(
+      config, 
+      procesarEvento, 
+      () => {
+        actualizarEstadoBotones(false);
+      }
+    );
+  }
+}
+
+function detenerSimulacion() {
+  if (fuenteInstanciaActiva) {
+    fuenteInstanciaActiva.detener();
+    fuenteInstanciaActiva = null;
+  }
+  actualizarEstadoBotones(false);
+}
+
+// ==========================================
+// CONTROL DEL RELOJ DE SIMULACIÓN
+// ==========================================
+function actualizarRelojUI(segundos) {
+  const tFormateado = (typeof segundos === 'number' || !isNaN(parseFloat(segundos)))
+    ? parseFloat(segundos).toFixed(2) + ' s'
+    : '0.00 s';
+
+  // Buscar el elemento por múltiples IDs o clases posibles en index.html
+  const selectores = [
+    'tiempo-simulacion',
+    'tiempo-val',
+    'reloj-simulacion',
+    'cronometro',
+    'tiempo-transcurrido'
+  ];
+
+  selectores.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerText = tFormateado;
+  });
+
+  document.querySelectorAll('.tiempo-valor, .reloj-valor').forEach(el => {
+    el.innerText = tFormateado;
+  });
 }
