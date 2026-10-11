@@ -184,3 +184,142 @@ document.addEventListener('DOMContentLoaded', () => {
     duracion: 30
   });
 });
+
+// ==========================================
+// ETAPA 6: SINTETIZADOR DE SONIDOS (WEB AUDIO API)
+// ==========================================
+let sonidoHabilitado = false;
+let audioCtx = null;
+
+function toggleSonido() {
+  sonidoHabilitado = !sonidoHabilitado;
+  const btn = document.getElementById("btn-sonido");
+  if (btn) btn.innerText = sonidoHabilitado ? "🔊 Sonido: ON" : "🔇 Sonido: OFF";
+}
+
+function reproducirEfecto(tipo) {
+  if (!sonidoHabilitado) return;
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  if (tipo === "compra") {
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12); // A5
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.12);
+  } else if (tipo === "rechazo") {
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(160, audioCtx.currentTime);
+    osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.15);
+  }
+}
+
+// ==========================================
+// ETAPA 6: RESUMEN Y CELEBRACIÓN
+// ==========================================
+function mostrarResumen(evFinal) {
+  const vendidos = evFinal.vendidos || 0;
+  const libres = evFinal.libres || 0;
+  const sinBoleto = evFinal.sin_boleto || 0;
+  const totalAsientos = vendidos + libres;
+
+  const pctOcupacion = totalAsientos > 0 ? ((vendidos / totalAsientos) * 100).toFixed(1) : 0;
+  const totalIntentos = (evFinal.total_intentos || vendidos + (evFinal.rechazos || 0));
+  const tasaExito = totalIntentos > 0 ? ((vendidos / totalIntentos) * 100).toFixed(1) : (vendidos > 0 ? 100 : 0);
+
+  document.getElementById("res-vendidos").innerText = vendidos;
+  document.getElementById("res-libres").innerText = libres;
+  document.getElementById("res-sin-boleto").innerText = sinBoleto;
+  document.getElementById("res-ocupacion").innerText = `${pctOcupacion}%`;
+  document.getElementById("res-exito").innerText = `${tasaExito}%`;
+
+  // Renderizar cuadritos de asientos vendidos por piso
+  const chipsP1 = document.getElementById("chips-piso1");
+  const chipsP2 = document.getElementById("chips-piso2");
+  if (chipsP1) chipsP1.innerHTML = "";
+  if (chipsP2) chipsP2.innerHTML = "";
+
+  const listaVendidos = evFinal.asientos_vendidos || [];
+  const piso1Max = 12; // Asientos piso 1
+
+  listaVendidos.sort((a, b) => a - b).forEach(aNum => {
+    const chip = document.createElement("span");
+    chip.className = "chip-asiento";
+    chip.innerText = `#${aNum}`;
+
+    if (aNum <= piso1Max && chipsP1) {
+      chipsP1.appendChild(chip);
+    } else if (chipsP2) {
+      chipsP2.appendChild(chip);
+    }
+  });
+
+  // Mostrar Modal
+  const modal = document.getElementById("modal-resumen");
+  if (modal) modal.classList.remove("hidden");
+}
+
+function cerrarModal() {
+  const modal = document.getElementById("modal-resumen");
+  if (modal) modal.classList.add("hidden");
+}
+
+function reiniciarYConfigurar() {
+  cerrarModal();
+  if (typeof reiniciarSimulacion === "function") {
+    reiniciarSimulacion();
+  }
+}
+
+// ==========================================
+// PROCESADOR PRINCIPAL DE EVENTOS
+// ==========================================
+function procesarEvento(ev) {
+  if (!ev || !ev.evento) return;
+
+  switch (ev.evento) {
+    case "inicio":
+      dibujarBus(ev);
+      break;
+
+    case "llega":
+      agregarLog(`[t=${ev.t}s] Pasajero ${ev.pasajero} llegó (Piso ${ev.preferencia})`, "info");
+      break;
+
+    case "intenta":
+      marcarAsientoEnProceso(ev.asiento, ev.pasajero);
+      break;
+
+    case "compra":
+      reproducirEfecto("compra"); // 🔊 Sonido compra
+      marcarAsientoComprado(ev.asiento, ev.pasajero, ev.piso);
+      agregarLog(`[t=${ev.t}s] ✅ Pasajero ${ev.pasajero} compró asiento #${ev.asiento}`, "exito");
+      break;
+
+    case "rechazo":
+      reproducirEfecto("rechazo"); // 🔊 Sonido rechazo
+      animarRechazo(ev.asiento);
+      agregarLog(`[t=${ev.t}s] ❌ Asiento #${ev.asiento} ocupado`, "error");
+      break;
+
+    case "sin_boleto":
+      agregarLog(`[t=${ev.t}s] ⚠️ Pasajero ${ev.pasajero} sin boleto`, "alerta");
+      break;
+
+    case "fin":
+      agregarLog(`[t=${ev.t}s] 🏁 Simulación finalizada`, "sistema");
+      mostrarResumen(ev); // 📊 Abrir modal
+      break;
+  }
+}

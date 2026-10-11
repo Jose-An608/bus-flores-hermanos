@@ -179,9 +179,42 @@
     </aside>
 
   </main>
+  
+<!-- Modal de Resumen Final -->
+<div id="modal-resumen" class="modal-overlay hidden" role="dialog" aria-labelledby="modal-titulo" aria-modal="true">
+  <div class="modal-content">
+    <h2 id="modal-titulo">📊 Resumen de la Simulación</h2>
+      
+    <div class="metrics-grid">
+      <div class="metric-card"><span class="val" id="res-vendidos">0</span><span class="lbl">Vendidos</span></div>
+      <div class="metric-card"><span class="val" id="res-libres">0</span><span class="lbl">Libres</span></div>
+      <div class="metric-card"><span class="val" id="res-sin-boleto">0</span><span class="lbl">Sin Boleto</span></div>
+      <div class="metric-card"><span class="val" id="res-ocupacion">0%</span><span class="lbl">Ocupación</span></div>
+      <div class="metric-card"><span class="val" id="res-exito">0%</span><span class="lbl">Tasa de Éxito</span></div>
+    </div>
 
-  <script src="fuentes.js"></script>
-  <script src="simulador.js"></script>
-  <script src="app.js"></script>
+    <h3>Asientos Comprados</h3>
+    <div id="res-asientos-piso1" class="asientos-resumen-container">
+      <strong>Piso 1:</strong> <div class="asientos-chips" id="chips-piso1"></div>
+    </div>
+    <div id="res-asientos-piso2" class="asientos-resumen-container">
+      <strong>Piso 2:</strong> <div class="asientos-chips" id="chips-piso2"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button id="btn-ver-de-nuevo" onclick="cerrarModal()">👁️ Ver de nuevo</button>
+      <button id="btn-nueva-sim" onclick="reiniciarYConfigurar()">🔄 Nueva simulación</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pie de Página -->
+<footer class="footer">
+  <p><strong>Flores Hermanos SSE</strong> • Desarrollo por <span>José (Frontend)</span> y <span>Chura (Backend)</span> • Sistemas Operativos</p>
+</footer>
+
+<script src="fuentes.js"></script>
+<script src="simulador.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

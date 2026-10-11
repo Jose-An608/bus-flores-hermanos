@@ -579,3 +579,58 @@ body.simulacion-activa .rueda {
     align-self: flex-end;
   }
 }
+/* MODAL RESUMEN */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+.modal-overlay.hidden { display: none; }
+
+.modal-content {
+  background: var(--card-bg, #1e293b);
+  color: var(--text-color, #f8fafc);
+  padding: 24px;
+  border-radius: 12px;
+  max-width: 550px;
+  width: 90%;
+  border: 1px solid var(--border-color, #334155);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.metric-card {
+  background: rgba(255,255,255,0.05);
+  padding: 10px; border-radius: 8px; text-align: center;
+}
+.metric-card .val { display: block; font-size: 1.2rem; font-weight: bold; color: #38bdf8; }
+.metric-card .lbl { font-size: 0.75rem; color: #94a3b8; }
+
+.asientos-resumen-container { margin: 10px 0; }
+.asientos-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.chip-asiento {
+  background: #22c55e; color: #fff;
+  padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold;
+}
+
+.modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
+.modal-actions button {
+  padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;
+}
+#btn-ver-de-nuevo { background: #475569; color: #fff; }
+#btn-nueva-sim { background: #0284c7; color: #fff; }
+
+/* FOOTER */
+.footer {
+  text-align: center; padding: 15px; font-size: 0.85rem; color: #64748b;
+  border-top: 1px solid rgba(255,255,255,0.05); margin-top: 30px;
+}
+.footer span { color: #f8fafc; font-weight: 600; }
