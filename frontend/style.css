@@ -152,6 +152,19 @@ h2 { font-size: 1.05rem; font-weight: 700; }
 @keyframes pulso { 50% { box-shadow: 0 0 0 5px rgba(199, 119, 0, .18); } }
 @keyframes pop   { 0% { transform: scale(.8); } 70% { transform: scale(1.1); } 100% { transform: scale(1); } }
 
+/* Compra manual: los asientos se pueden pulsar mientras corre el programa C */
+.compra-manual .asiento { cursor: pointer; }
+.compra-manual .asiento:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(16, 24, 40, .15); }
+.tuyo { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--primario) !important; }
+
+.aviso {
+  margin: -6px 0 16px; padding: 10px 14px; border-radius: 10px;
+  background: var(--primario-suave); color: var(--primario);
+  font-size: .9rem; font-weight: 600;
+}
+.aviso.exito { background: var(--libre-fondo); color: var(--libre); }
+.aviso.error { background: #fdecec; color: var(--vendido); }
+
 /* Rechazo: sacudida corta, el asiento conserva su color */
 .choque { animation: choque .35s ease-in-out !important; }
 @keyframes choque { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
@@ -216,6 +229,7 @@ h2 { font-size: 1.05rem; font-weight: 700; }
 .log .rechazo { color: var(--proceso); }
 .log .sin_boleto { color: var(--vendido); }
 .log .sistema { color: var(--primario); font-weight: 700; }
+.log .usuario { background: var(--primario-suave); color: var(--primario); font-weight: 700; }
 
 /* ---------- Resumen ---------- */
 .modal {

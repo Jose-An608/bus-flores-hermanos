@@ -81,6 +81,7 @@ const server = http.createServer((req, res) => {
         const rutaEjecutable = path.join(__dirname, 'bus');
         const hijo = spawn(rutaEjecutable, args);
         procesoSimulacion = hijo;
+        hijo.stdin.on('error', () => {});   // el proceso pudo terminar justo antes de escribir
 
         // Interceptar la salida estándar (stdout) usando readline
         const rl = readline.createInterface({ input: hijo.stdout, terminal: false });
@@ -119,6 +120,27 @@ const server = http.createServer((req, res) => {
         });
 
         return;
+    }
+
+    // =====================================================================
+    // ENDPOINT: Compra manual del usuario
+    // Escribe "comprar N" en la entrada estándar del programa C. Allí, el hilo
+    // del usuario intenta comprar con el mismo mutex que los demás pasajeros.
+    // El resultado (intenta / compra / rechazo) llega por el mismo canal SSE.
+    // =====================================================================
+    if (pathname === '/comprar' && req.method === 'GET') {
+        const asiento = parseInt(url.searchParams.get('asiento'), 10);
+        if (!procesoSimulacion || procesoSimulacion.exitCode !== null) {
+            res.writeHead(409, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'No hay una simulación en curso.' }));
+        }
+        if (isNaN(asiento) || asiento < 1 || asiento > 60) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'Número de asiento inválido.' }));
+        }
+        procesoSimulacion.stdin.write(`comprar ${asiento}\n`);
+        res.writeHead(202, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ mensaje: `Orden enviada: comprar ${asiento}` }));
     }
 
     // =====================================================================
