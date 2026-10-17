@@ -75,15 +75,15 @@ const server = http.createServer((req, res) => {
 
         console.log(`[SIMULACIÓN] Iniciando: ./bus ${args.join(' ')}`);
 
-        // Lanzar el proceso hijo (el binario C)
+        // Lanzar el proceso hijo (el binario C).
+        // Se guarda en una variable LOCAL ("hijo") para que los eventos de este
+        // proceso no afecten a una simulación más nueva que se haya iniciado después.
         const rutaEjecutable = path.join(__dirname, 'bus');
-        procesoSimulacion = spawn(rutaEjecutable, args);
+        const hijo = spawn(rutaEjecutable, args);
+        procesoSimulacion = hijo;
 
         // Interceptar la salida estándar (stdout) usando readline
-        const rl = readline.createInterface({
-            input: procesoSimulacion.stdout,
-            terminal: false
-        });
+        const rl = readline.createInterface({ input: hijo.stdout, terminal: false });
 
         // Por cada línea impresa en C (un JSON válido), se reenvía al navegador web
         rl.on('line', (linea) => {
@@ -93,25 +93,28 @@ const server = http.createServer((req, res) => {
         });
 
         // Registrar errores en consola si ocurren (stderr)
-        procesoSimulacion.stderr.on('data', (data) => {
+        hijo.stderr.on('data', (data) => {
             console.error(`[SIMULACIÓN ERROR]: ${data}`);
         });
 
-        // Manejar el fin del proceso
-        procesoSimulacion.on('close', (codigo) => {
-            console.log(`[SIMULACIÓN] Terminada con código de salida ${codigo}`);
-            // Enviar evento finalizador y cerrar la conexión limpia
-            res.write(`event: cierre\ndata: {}\n\n`);
-            res.end();
-            procesoSimulacion = null;
+        // Si el binario no existe o no se puede ejecutar (falta compilar con make)
+        hijo.on('error', (err) => {
+            console.error(`[SIMULACIÓN] No se pudo ejecutar ./bus: ${err.message}`);
         });
 
-        // Si el usuario cierra el navegador o cambia de pestaña, matar el proceso
-        req.on('close', () => {
-            if (procesoSimulacion) {
+        // Manejar el fin del proceso: avisar al navegador y cerrar la conexión
+        hijo.on('close', (codigo) => {
+            console.log(`[SIMULACIÓN] Terminada con código de salida ${codigo}`);
+            res.write(`event: cierre\ndata: {}\n\n`);
+            res.end();
+            if (procesoSimulacion === hijo) procesoSimulacion = null;
+        });
+
+        // Si el usuario cierra la pestaña, matar SOLO este proceso
+        res.on('close', () => {
+            if (hijo.exitCode === null) {
                 console.log('[SIMULACIÓN] Cliente desconectado. Deteniendo proceso...');
-                procesoSimulacion.kill('SIGKILL');
-                procesoSimulacion = null;
+                hijo.kill('SIGKILL');
             }
         });
 

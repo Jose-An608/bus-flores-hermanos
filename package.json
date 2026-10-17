@@ -1,13 +1,11 @@
 {
   "name": "bus-flores-hermanos",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "description": "Simulación de venta de pasajes con pthreads y mutex (Flores Hermanos)",
+  "main": "backend/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "make -C backend",
+    "start": "node backend/server.js"
   },
   "repository": {
     "type": "git",
@@ -20,8 +18,7 @@
     "url": "https://github.com/Jose-An608/bus-flores-hermanos/issues"
   },
   "homepage": "https://github.com/Jose-An608/bus-flores-hermanos#readme",
-  "dependencies": {
-    "cors": "^2.8.6",
-    "express": "^5.3.0"
+  "engines": {
+    "node": ">=18"
   }
 }

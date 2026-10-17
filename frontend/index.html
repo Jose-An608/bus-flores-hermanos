@@ -3,218 +3,143 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Flores Hermanos · Simulación de Venta de Pasajes</title>
+  <title>Flores Hermanos · Venta de pasajes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-<body data-theme="dark">
+<body>
 
-  <!-- ENCABEZADO CON BUS ANIMADO Y MODO CLARO/OSCURO -->
+  <!-- ============ ENCABEZADO ============ -->
   <header class="encabezado">
-    <div class="encabezado-contenido">
-      <div class="brand">
-        <!-- Bus SVG animado con ruedas giratorias -->
-        <svg class="bus-svg-animado" viewBox="0 0 120 60" aria-hidden="true">
-          <g class="bus-cuerpo">
-            <rect x="5" y="10" width="110" height="35" rx="8" fill="var(--color-bus-body)" />
-            <rect x="15" y="15" width="20" height="12" rx="2" fill="var(--color-ventana)" />
-            <rect x="40" y="15" width="20" height="12" rx="2" fill="var(--color-ventana)" />
-            <rect x="65" y="15" width="20" height="12" rx="2" fill="var(--color-ventana)" />
-            <rect x="90" y="15" width="20" height="12" rx="2" fill="var(--color-ventana)" />
-            <path d="M 100 10 L 115 25 L 115 45 L 100 45 Z" fill="var(--color-bus-front)" />
-            <circle cx="110" cy="38" r="3" fill="#fef08a" />
-          </g>
-          <!-- Ruedas con animación de rotación CSS -->
-          <g class="rueda rueda-izq">
-            <circle cx="30" cy="45" r="8" fill="#1e293b" stroke="#94a3b8" stroke-width="2"/>
-            <line x1="30" y1="37" x2="30" y2="53" stroke="#e2e8f0" stroke-width="2"/>
-            <line x1="22" y1="45" x2="38" y2="45" stroke="#e2e8f0" stroke-width="2"/>
-          </g>
-          <g class="rueda rueda-der">
-            <circle cx="90" cy="45" r="8" fill="#1e293b" stroke="#94a3b8" stroke-width="2"/>
-            <line x1="90" y1="37" x2="90" y2="53" stroke="#e2e8f0" stroke-width="2"/>
-            <line x1="82" y1="45" x2="98" y2="45" stroke="#e2e8f0" stroke-width="2"/>
-          </g>
-        </svg>
-        <div class="titulos">
-          <h1>Flores Hermanos</h1>
-          <p class="subtitulo">Simulación de venta de pasajes · Sistemas Operativos</p>
-        </div>
+    <div class="marca">
+      <span class="logo" aria-hidden="true">🚌</span>
+      <div>
+        <h1>Flores Hermanos</h1>
+        <p>Simulación de venta de pasajes con hilos (pthreads) y mutex · Sistemas Operativos</p>
       </div>
-
-      <button id="btn-tema" class="btn-tema" title="Cambiar tema claro/oscuro">
-        <span class="icono-tema">🌙</span>
-        <span class="texto-tema">Modo Oscuro</span>
-      </button>
     </div>
 
-    <!-- MAPA DE RUTA Y PROGRESO -->
-    <div class="mapa-ruta">
-      <span class="ciudad origen">Tacna</span>
-      <div class="barra-progreso-contenedor">
-        <div id="indicador-bus-ruta" class="indicador-bus-ruta">🚌</div>
-        <div id="barra-progreso" class="barra-progreso"></div>
+    <!-- Ruta: el bus avanza según el tiempo de la simulación -->
+    <div class="ruta" aria-label="Progreso de la simulación">
+      <span class="ciudad">Tacna</span>
+      <div class="ruta-linea">
+        <div id="ruta-progreso" class="ruta-progreso"></div>
+        <span id="ruta-bus" class="ruta-bus" aria-hidden="true">🚌</span>
       </div>
-      <span class="ciudad destino">Lima</span>
+      <span class="ciudad">Lima</span>
     </div>
   </header>
 
-  <!-- CONTENIDO PRINCIPAL -->
-  <main class="contenedor-principal">
+  <main class="contenido">
 
-    <!-- SECCIÓN DEL BUS DE 2 PISOS -->
-    <section class="seccion-bus">
-      <h2>Estado de Asientos en Tiempo Real</h2>
-
-      <!-- Leyenda de Estados -->
-      <div class="leyenda">
-        <div class="item-leyenda libre">
-          <span class="badge-icono">✓</span>
-          <span class="indicador-color verde"></span>
-          <span>Libre</span>
-        </div>
-        <div class="item-leyenda en-proceso">
-          <span class="badge-icono">⏳</span>
-          <span class="indicador-color amarillo"></span>
-          <span>En proceso</span>
-        </div>
-        <div class="item-leyenda comprado">
-          <span class="badge-icono">🔒</span>
-          <span class="indicador-color rojo"></span>
-          <span>Comprado</span>
-        </div>
+    <!-- ============ COLUMNA IZQUIERDA: EL BUS ============ -->
+    <section class="tarjeta bus">
+      <div class="tarjeta-titulo">
+        <h2>Asientos del bus</h2>
+        <ul class="leyenda">
+          <li><span class="muestra libre">✓</span> Libre</li>
+          <li><span class="muestra en-proceso">⏳</span> Pagando (mutex tomado)</li>
+          <li><span class="muestra comprado">🔒</span> Vendido</li>
+        </ul>
       </div>
 
-      <!-- Contenedor del Bus de 2 pisos -->
-      <div id="bus-dos-pisos" class="bus-dos-pisos">
-
-        <!-- PISO 1 (Ejecutivo / Cabina de conductor) -->
-        <div class="piso-bus" id="piso-1-container">
-          <div class="piso-header">
-            <h3>Piso 1 (Ejecutivo)</h3>
-            <span class="cabina-conductor" title="Cabina del Conductor">🛞 Volante</span>
-          </div>
-          <div class="piso-cuerpo">
-            <div id="grid-piso-1" class="grid-asientos"></div>
-            <div class="zona-escalera" title="Escalera al Piso 2">
-              <span>🪜 Escalera</span>
-            </div>
-          </div>
+      <div class="pisos">
+        <div class="piso">
+          <h3>Piso 1 <small id="ocupacion-piso-1">0 / 0</small></h3>
+          <div class="frente-bus">🛞 Conductor</div>
+          <div id="grid-piso-1" class="grid-asientos"></div>
         </div>
-
-        <!-- PISO 2 (Estándar / VIP) -->
-        <div class="piso-bus" id="piso-2-container">
-          <div class="piso-header">
-            <h3>Piso 2 (Estándar)</h3>
-            <span class="indicador-panoramico">🪟 Vista Panorámica</span>
-          </div>
-          <div class="piso-cuerpo">
-            <div class="zona-escalera" title="Acceso desde Piso 1">
-              <span>🪜 Escalera</span>
-            </div>
-            <div id="grid-piso-2" class="grid-asientos"></div>
-          </div>
+        <div class="piso">
+          <h3>Piso 2 <small id="ocupacion-piso-2">0 / 0</small></h3>
+          <div class="frente-bus">🪟 Ventana panorámica</div>
+          <div id="grid-piso-2" class="grid-asientos"></div>
         </div>
-
       </div>
     </section>
 
-    <!-- PANEL LATERAL: CONTROLES, CRONÓMETRO Y ESTADÍSTICAS -->
-    <aside class="panel-lateral">
+    <!-- ============ COLUMNA DERECHA: CONTROL Y DATOS ============ -->
+    <aside class="panel">
 
-      <!-- CRONÓMETRO Y ESTADO -->
-      <div class="tarjeta-panel cronometro-card">
-        <div class="cronometro-header">
-          <span class="label">Tiempo Simulación</span>
-          <span id="estado-simulacion" class="badge-estado">Detenido</span>
-        </div>
-        <div class="cronometro-valor" id="cronometro">0.00 s</div>
-      </div>
+      <!-- 1. Configuración y control -->
+      <section class="tarjeta">
+        <h2>Configuración</h2>
 
-      <!-- CONTADORES -->
-      <div class="tarjeta-panel contadores-grid">
-        <div class="contador-box">
-          <span class="contador-titulo">Pasajeros</span>
-          <span class="contador-numero" id="cnt-pasajeros">0</span>
+        <div class="selector-fuente" role="radiogroup" aria-label="Origen de los datos">
+          <label>
+            <input type="radio" name="fuente" value="envivo" checked>
+            <span>⚙️ Programa C <small>en vivo</small></span>
+          </label>
+          <label>
+            <input type="radio" name="fuente" value="grabacion">
+            <span>📁 Grabación <small>respaldo</small></span>
+          </label>
         </div>
-        <div class="contador-box exito">
-          <span class="contador-titulo">Vendidos</span>
-          <span class="contador-numero" id="cnt-vendidos">0</span>
-        </div>
-        <div class="contador-box libre">
-          <span class="contador-titulo">Libres</span>
-          <span class="contador-numero" id="cnt-libres">0</span>
-        </div>
-        <div class="contador-box alerta">
-          <span class="contador-titulo">Rechazos</span>
-          <span class="contador-numero" id="cnt-rechazos">0</span>
-        </div>
-        <div class="contador-box peligro">
-          <span class="contador-titulo">Sin Boleto</span>
-          <span class="contador-numero" id="cnt-sin-boleto">0</span>
-        </div>
-      </div>
 
-      <!-- PANEL DE CONTROL FUENTES -->
-      <div class="tarjeta-panel controles-fuente">
-        <h4>Fuente de Eventos</h4>
-        <div class="grupo-botones-fuente">
-          <button id="btn-fuente-simulada" class="btn-fuente activa" onclick="cambiarFuente('simulado', this)">🎭 Simulada</button>
-          <button id="btn-fuente-envivo" class="btn-fuente" onclick="cambiarFuente('envivo', this)">📡 En Vivo</button>
-          <button id="btn-fuente-grabacion" class="btn-fuente" onclick="cambiarFuente('grabacion', this)">📁 Grabación</button>
-        </div>
-        <div class="acciones-simulacion">
-          <button id="btn-iniciar" class="btn-accion btn-play" onclick="iniciarSimulacion()">▶ Iniciar</button>
-          <button id="btn-detener" class="btn-accion btn-stop" onclick="detenerSimulacion()" disabled>■ Detener</button>
-        </div>
-      </div>
+        <form id="form-config" class="form-config">
+          <label>Asientos <input id="in-asientos"  type="number" min="4" max="60"  value="48"></label>
+          <label>Segundos <input id="in-segundos"  type="number" min="5" max="120" value="30"></label>
+          <label>Pasajeros <input id="in-pasajeros" type="number" min="1" max="300" value="80"></label>
+          <label>Semilla <input id="in-semilla" type="number" min="0" placeholder="aleatoria"></label>
+        </form>
+        <p id="nota-fuente" class="nota"></p>
 
-      <!-- REGISTRO / LOG DE EVENTOS -->
-      <div class="tarjeta-panel log-card">
-        <h4>Registro de Eventos (Log)</h4>
-        <div id="log-eventos" class="log-eventos">
-          <div class="log-linea sistema">[0.00s] Listo para iniciar la simulación.</div>
+        <div class="acciones">
+          <button id="btn-iniciar" class="btn btn-primario">▶ Iniciar</button>
+          <button id="btn-detener" class="btn btn-secundario" disabled>■ Detener</button>
         </div>
-      </div>
+      </section>
+
+      <!-- 2. Tiempo y contadores -->
+      <section class="tarjeta">
+        <div class="reloj-fila">
+          <div>
+            <span class="etiqueta">Tiempo</span>
+            <div id="reloj" class="reloj">0.00 s</div>
+          </div>
+          <span id="estado" class="estado">Detenido</span>
+        </div>
+
+        <div class="contadores" aria-live="polite">
+          <div class="contador"><span id="cnt-llegaron">0</span>Llegaron</div>
+          <div class="contador verde"><span id="cnt-vendidos">0</span>Vendidos</div>
+          <div class="contador"><span id="cnt-libres">0</span>Libres</div>
+          <div class="contador ambar"><span id="cnt-rechazos">0</span>Rechazos</div>
+          <div class="contador rojo"><span id="cnt-sin-boleto">0</span>Sin boleto</div>
+        </div>
+      </section>
+
+      <!-- 3. Registro de eventos -->
+      <section class="tarjeta">
+        <h2>Registro de eventos</h2>
+        <ol id="log" class="log"></ol>
+      </section>
 
     </aside>
-
   </main>
 
-<!-- Modal de Resumen Final -->
-<div id="modal-resumen" class="modal-overlay hidden" role="dialog" aria-labelledby="modal-titulo" aria-modal="true">
-  <div class="modal-content">
-    <h2 id="modal-titulo">📊 Resumen de la Simulación</h2>
-      
-    <div class="metrics-grid">
-      <div class="metric-card"><span class="val" id="res-vendidos">0</span><span class="lbl">Vendidos</span></div>
-      <div class="metric-card"><span class="val" id="res-libres">0</span><span class="lbl">Libres</span></div>
-      <div class="metric-card"><span class="val" id="res-sin-boleto">0</span><span class="lbl">Sin Boleto</span></div>
-      <div class="metric-card"><span class="val" id="res-ocupacion">0%</span><span class="lbl">Ocupación</span></div>
-      <div class="metric-card"><span class="val" id="res-exito">0%</span><span class="lbl">Tasa de Éxito</span></div>
+  <!-- ============ RESUMEN FINAL ============ -->
+  <dialog id="modal-resumen" class="modal">
+    <h2>Resumen de la simulación</h2>
+    <div class="resumen-numeros">
+      <div><span id="res-vendidos">0</span>Vendidos</div>
+      <div><span id="res-libres">0</span>Libres</div>
+      <div><span id="res-sin-boleto">0</span>Sin boleto</div>
+      <div><span id="res-ocupacion">0%</span>Ocupación</div>
     </div>
+    <h3>Asientos vendidos</h3>
+    <p class="chips-titulo">Piso 1</p>
+    <div id="chips-piso-1" class="chips"></div>
+    <p class="chips-titulo">Piso 2</p>
+    <div id="chips-piso-2" class="chips"></div>
+    <form method="dialog" class="acciones">
+      <button class="btn btn-primario">Cerrar</button>
+    </form>
+  </dialog>
 
-    <h3>Asientos Comprados</h3>
-    <div id="res-asientos-piso1" class="asientos-resumen-container">
-      <strong>Piso 1:</strong> <div class="asientos-chips" id="chips-piso1"></div>
-    </div>
-    <div id="res-asientos-piso2" class="asientos-resumen-container">
-      <strong>Piso 2:</strong> <div class="asientos-chips" id="chips-piso2"></div>
-    </div>
+  <footer class="pie">José (frontend) · Chura (backend) · Sistemas Operativos</footer>
 
-    <div class="modal-actions">
-      <button id="btn-ver-de-nuevo" onclick="cerrarModal()">👁️ Ver de nuevo</button>
-      <button id="btn-nueva-sim" onclick="reiniciarYConfigurar()">🔄 Nueva simulación</button>
-    </div>
-  </div>
-</div>
-
-<!-- Pie de Página -->
-<footer class="footer">
-  <p><strong>Flores Hermanos SSE</strong> • Desarrollo por <span>José (Frontend)</span> y <span>Chura (Backend)</span> • Sistemas Operativos</p>
-</footer>
-
-<script src="fuentes.js"></script>
-<script src="simulador.js"></script>
-<script src="app.js"></script>
+  <script src="fuentes.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

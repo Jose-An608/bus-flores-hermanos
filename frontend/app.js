@@ -1,527 +1,292 @@
 /**
- * Flores Hermanos · Simulación de venta de pasajes
- * Módulo Principal del Frontend (app.js)
+ * app.js — Dibuja el bus y reacciona a los eventos del programa C.
+ *
+ * Flujo:
+ *   1. El usuario pulsa Iniciar.
+ *   2. Una fuente (en vivo o grabación) entrega eventos uno por uno.
+ *   3. procesarEvento(evento) actualiza asientos, contadores y registro.
+ *
+ * Eventos (ver CONTRATO_EVENTOS.md):
+ *   inicio · llega · intenta · compra · rechazo · sin_boleto · fin
  */
 
-// Estado global de la aplicación
-const estadoApp = {
-  configuracion: null,
-  asientos: new Map(), // id -> elemento DOM
-  asientosComprados: new Set(), // Registro persistente de asientos vendidos
-  contadores: {
-    pasajeros: 0,
-    vendidos: 0,
-    libres: 48,
-    rechazos: 0,
-    sinBoleto: 0
-  }
+// ---------- Atajos ----------
+const $ = (id) => document.getElementById(id);
+
+// ---------- Estado de la página ----------
+const estado = {
+  config: null,          // datos del evento "inicio"
+  asientos: new Map(),   // id del asiento -> elemento HTML
+  vendidos: new Set(),   // ids de asientos ya vendidos
+  llegaron: 0,
+  rechazos: 0,
+  sinBoleto: 0,
+  fuente: null,          // fuente de eventos en uso
+  relojInicio: 0,        // momento (ms) en que empezó la simulación
+  relojTimer: null,
 };
 
-/**
- * Control del tema (Oscuro / Claro)
- */
-function inicializarTema() {
-  const btnTema = document.getElementById('btn-tema');
-  if (!btnTema) return;
-  const textoTema = btnTema.querySelector('.texto-tema');
-  const iconoTema = btnTema.querySelector('.icono-tema');
-
-  btnTema.addEventListener('click', () => {
-    const temaActual = document.body.getAttribute('data-theme');
-    const nuevoTema = temaActual === 'dark' ? 'light' : 'dark';
-    document.body.setAttribute('data-theme', nuevoTema);
-    if (textoTema) textoTema.textContent = nuevoTema === 'dark' ? 'Modo Oscuro' : 'Modo Claro';
-    if (iconoTema) iconoTema.textContent = nuevoTema === 'dark' ? '🌙' : '☀️';
-  });
-}
-
-/**
- * Renderiza la estructura visual del Bus de 2 Pisos
- */
+/* =========================================================
+ * 1. DIBUJAR EL BUS
+ * ========================================================= */
 function dibujarBus(config) {
-  estadoApp.configuracion = config;
-  
-  const containerPiso1 = document.getElementById('grid-piso-1');
-  const containerPiso2 = document.getElementById('grid-piso-2');
+  estado.config = config;
+  estado.asientos.clear();
+  estado.vendidos.clear();
 
-  if (!containerPiso1 || !containerPiso2) return;
-
-  containerPiso1.innerHTML = '';
-  containerPiso2.innerHTML = '';
-  estadoApp.asientos.clear();
-  estadoApp.asientosComprados.clear();
-
-  const totalAsientos = config.asientos || 48;
-  const limitePiso1 = config.piso1 || Math.floor(totalAsientos / 4);
-
-  estadoApp.contadores.libres = totalAsientos;
-  actualizarContadoresUI();
-
-  generarGridPiso(containerPiso1, 1, limitePiso1);
-  generarGridPiso(containerPiso2, limitePiso1 + 1, totalAsientos);
+  // Piso 1: asientos 1..piso1   ·   Piso 2: el resto
+  llenarPiso($('grid-piso-1'), 1, config.piso1);
+  llenarPiso($('grid-piso-2'), config.piso1 + 1, config.asientos);
+  actualizarContadores();
 }
 
-function generarGridPiso(contenedor, idInicio, idFin) {
-  let contadorColumna = 0;
+function llenarPiso(contenedor, desde, hasta) {
+  contenedor.innerHTML = '';
+  for (let id = desde, posicion = 0; id <= hasta; id++, posicion++) {
+    // Después de 2 asientos va el pasillo (2 + pasillo + 2)
+    if (posicion % 4 === 2) contenedor.appendChild(crearElemento('div', 'pasillo'));
 
-  for (let id = idInicio; id <= idFin; id++) {
-    const elAsiento = document.createElement('div');
-    elAsiento.className = 'asiento estado-libre libre';
-    elAsiento.setAttribute('data-id', id);
-    elAsiento.setAttribute('data-asiento', id);
-
-    const numSpan = document.createElement('span');
-    numSpan.className = 'asiento-numero';
-    numSpan.textContent = id;
-
-    const iconoSpan = document.createElement('span');
-    iconoSpan.className = 'asiento-icono';
-    iconoSpan.textContent = '✓';
-
-    elAsiento.appendChild(numSpan);
-    elAsiento.appendChild(iconoSpan);
-
-    contenedor.appendChild(elAsiento);
-    estadoApp.asientos.set(Number(id), elAsiento);
-
-    contadorColumna++;
-
-    if (contadorColumna % 2 === 0 && contadorColumna % 4 !== 0) {
-      const pasillo = document.createElement('div');
-      pasillo.className = 'pasillo-espacio';
-      contenedor.appendChild(pasillo);
-    }
+    const asiento = crearElemento('div', 'asiento');
+    asiento.innerHTML = `${id}<span class="icono"></span>`;
+    contenedor.appendChild(asiento);
+    estado.asientos.set(id, asiento);
+    pintarAsiento(id, 'libre');
   }
 }
 
-function reseteaEstadosVisuales() {
-  estadoApp.asientosComprados.clear();
-  estadoApp.asientos.forEach((elAsiento) => {
-    elAsiento.className = 'asiento estado-libre libre';
-    const icono = elAsiento.querySelector('.asiento-icono');
-    if (icono) icono.textContent = '✓';
-  });
+function crearElemento(etiqueta, clase) {
+  const el = document.createElement(etiqueta);
+  el.className = clase;
+  return el;
 }
 
-/**
- * REGLA DE ORO: Un asiento COMPRADO nunca vuelve a ser LIBRE
- */
-function actualizarEstadoAsiento(asientoId, nuevoEstado, conError = false) {
-  const idNum = Number(asientoId);
-  if (!idNum) return;
+/* Estados posibles: 'libre', 'en-proceso', 'comprado' */
+const ICONOS = { 'libre': '✓', 'en-proceso': '⏳', 'comprado': '🔒' };
 
-  if (estadoApp.asientosComprados.has(idNum) && nuevoEstado !== 'comprado') {
-    if (conError) {
-      const el = estadoApp.asientos.get(idNum) || document.querySelector(`[data-id="${idNum}"]`);
-      if (el) {
-        el.classList.add('animacion-rechazo');
-        setTimeout(() => el.classList.remove('animacion-rechazo'), 400);
-      }
-    }
-    return;
-  }
-
-  let elAsiento = estadoApp.asientos.get(idNum);
-  if (!elAsiento) {
-    elAsiento = document.querySelector(`[data-id="${idNum}"], [data-asiento="${idNum}"]`);
-  }
-  if (!elAsiento) return;
-
-  const icono = elAsiento.querySelector('.asiento-icono');
-
-  elAsiento.classList.remove('estado-libre', 'estado-proceso', 'estado-comprado', 'libre', 'en-proceso', 'comprado', 'ocupado');
-
-  switch (nuevoEstado) {
-    case 'libre':
-      elAsiento.classList.add('estado-libre', 'libre');
-      if (icono) icono.textContent = '✓';
-      break;
-    case 'en-proceso':
-      elAsiento.classList.add('estado-proceso', 'en-proceso');
-      if (icono) icono.textContent = '⏳';
-      break;
-    case 'comprado':
-      estadoApp.asientosComprados.add(idNum);
-      elAsiento.classList.add('estado-comprado', 'comprado');
-      if (icono) icono.textContent = '🔒';
-      break;
-  }
-
-  if (conError) {
-    elAsiento.classList.add('animacion-rechazo');
-    setTimeout(() => elAsiento.classList.remove('animacion-rechazo'), 400);
-  }
+function pintarAsiento(id, nuevoEstado) {
+  const asiento = estado.asientos.get(id);
+  if (!asiento) return;
+  asiento.className = 'asiento ' + nuevoEstado;
+  asiento.querySelector('.icono').textContent = ICONOS[nuevoEstado];
+  asiento.title = `Asiento ${id}: ${nuevoEstado}`;
 }
 
-function marcarAsientoEnProceso(asientoId) {
-  actualizarEstadoAsiento(asientoId, 'en-proceso');
+/* Rechazo: el asiento NO cambia de estado, solo se sacude */
+function sacudirAsiento(id) {
+  const asiento = estado.asientos.get(id);
+  if (!asiento) return;
+  asiento.classList.remove('choque');
+  void asiento.offsetWidth;            // reinicia la animación
+  asiento.classList.add('choque');
 }
 
-function marcarAsientoComprado(asientoId) {
-  actualizarEstadoAsiento(asientoId, 'comprado');
-}
-
-function animarRechazo(asientoId) {
-  actualizarEstadoAsiento(asientoId, 'rechazo_anim', true);
-}
-
-function actualizarContadoresUI() {
-  const p = estadoApp.contadores.pasajeros;
-  const v = estadoApp.contadores.vendidos;
-  const l = estadoApp.contadores.libres;
-  const r = estadoApp.contadores.rechazos;
-  const sb = estadoApp.contadores.sinBoleto;
-
-  const setTexto = (ids, val) => {
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = val;
-    });
-  };
-
-  setTexto(['cnt-pasajeros', 'cant-pasajeros'], p);
-  setTexto(['cnt-vendidos', 'cant-vendidos'], v);
-  setTexto(['cnt-libres', 'cant-libres'], l);
-  setTexto(['cnt-rechazos', 'cant-rechazos'], r);
-  setTexto(['cnt-sin-boleto', 'cant-sin-boleto'], sb);
-}
-
-function agregarLog(mensaje, tipo = 'sistema') {
-  const logContenedor = document.getElementById('log-eventos');
-  if (!logContenedor) return;
-  const linea = document.createElement('div');
-  linea.className = `log-linea ${tipo}`;
-  linea.textContent = mensaje;
-  logContenedor.appendChild(linea);
-  logContenedor.scrollTop = logContenedor.scrollHeight;
-}
-
-// ==========================================
-// SINTETIZADOR DE SONIDOS
-// ==========================================
-let sonidoHabilitado = false;
-let audioCtx = null;
-
-function reproducirEfecto(tipo) {
-  if (!sonidoHabilitado) return;
-  try {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    if (tipo === "compra") {
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.12);
-    } else if (tipo === "rechazo") {
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(160, audioCtx.currentTime);
-      osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + 0.15);
-      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.15);
-    }
-  } catch (e) {}
-}
-
-// ==========================================
-// MODAL DE RESUMEN
-// ==========================================
-function mostrarResumen(evFinal) {
-  const modal = document.getElementById("modal-resumen");
-  if (!modal) return;
-
-  // 1. Obtener la cantidad real de asientos comprados en memoria
-  const compradosReales = estadoApp.asientosComprados.size > 0 
-    ? estadoApp.asientosComprados.size 
-    : estadoApp.contadores.vendidos;
-
-  const vendidos = (evFinal && evFinal.vendidos > 0) ? evFinal.vendidos : compradosReales;
-  const libres = 48 - vendidos;
-  
-  // 2. CÁLCULO DIRECTO: Pasajeros totales menos los que lograron comprar
-  const totalPasajeros = estadoApp.contadores.pasajeros || (evFinal && evFinal.pasajeros) || 80;
-  const sinBoleto = Math.max(0, totalPasajeros - vendidos);
-
-  // Sincronizar el contador global y actualizar el panel lateral de la derecha
-  estadoApp.contadores.sinBoleto = sinBoleto;
-  actualizarContadoresUI();
-  
-  const pctOcupacion = ((vendidos / 48) * 100).toFixed(1);
-  const tasaExito = totalPasajeros > 0 ? ((vendidos / totalPasajeros) * 100).toFixed(1) : "0.0";
-
-  // 3. Renderizar valores numéricos en el Modal
-  const setTexto = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
-  setTexto("res-vendidos", vendidos);
-  setTexto("res-libres", libres);
-  setTexto("res-sin-boleto", sinBoleto);
-  setTexto("res-ocupacion", `${pctOcupacion}%`);
-  setTexto("res-exito", `${tasaExito}%`);
-
-  // 4. Ubicar contenedores de chips sin alterar los títulos de los pisos
-  let chipsP1 = document.getElementById("chips-piso1") || document.getElementById("resumen-piso1");
-  let chipsP2 = document.getElementById("chips-piso2") || document.getElementById("resumen-piso2");
-
-  if (!chipsP1 || !chipsP2) {
-    const contenedoresChips = modal.querySelectorAll('.chips');
-    if (contenedoresChips.length >= 2) {
-      chipsP1 = contenedoresChips[0];
-      chipsP2 = contenedoresChips[1];
-    }
-  }
-
-  if (chipsP1) chipsP1.innerHTML = "";
-  if (chipsP2) chipsP2.innerHTML = "";
-
-  const listaVendidos = (evFinal && evFinal.asientos_vendidos && evFinal.asientos_vendidos.length > 0)
-    ? evFinal.asientos_vendidos
-    : Array.from(estadoApp.asientosComprados);
-
-  const piso1Max = estadoApp.configuracion ? (estadoApp.configuracion.piso1 || 12) : 12;
-
-  if (listaVendidos.length > 0) {
-    listaVendidos.sort((a, b) => a - b).forEach(aNum => {
-      const chip = document.createElement("span");
-      chip.className = "chip-asiento";
-      chip.innerText = `#${aNum}`;
-
-      if (aNum <= piso1Max && chipsP1) {
-        chipsP1.appendChild(chip);
-      } else if (chipsP2) {
-        chipsP2.appendChild(chip);
-      }
-    });
-  }
-
-  if (chipsP1 && chipsP1.children.length === 0) {
-    chipsP1.innerHTML = '<span class="vacio" style="color:#94a3b8; font-size: 0.85rem;">Ningún asiento vendido</span>';
-  }
-  if (chipsP2 && chipsP2.children.length === 0) {
-    chipsP2.innerHTML = '<span class="vacio" style="color:#94a3b8; font-size: 0.85rem;">Ningún asiento vendido</span>';
-  }
-
-  modal.classList.remove("hidden");
-  modal.classList.add("activo");
-}
-
-function cerrarModal() {
-  const modal = document.getElementById("modal-resumen");
-  if (modal) {
-    modal.classList.add("hidden");
-    modal.classList.remove("activo");
-  }
-}
-
-// ==========================================
-// PROCESADOR DE EVENTOS
-// ==========================================
-// Dentro de procesarEvento(ev)
+/* =========================================================
+ * 2. PROCESAR CADA EVENTO DEL PROGRAMA C
+ * ========================================================= */
 function procesarEvento(ev) {
-  if (!ev || !ev.evento) return;
-
-  // Actualizar constantemente el contador de tiempo en pantalla
-  if (ev.t !== undefined && ev.t !== null) {
-    actualizarRelojUI(ev.t);
-  }
-
   switch (ev.evento) {
-    case "inicio":
+    case 'inicio':
       dibujarBus(ev);
+      iniciarReloj();
+      registrar(ev, `Inicio: ${ev.asientos} asientos, ${ev.pasajeros} pasajeros, ${ev.duracion} s`, 'sistema');
       break;
 
-    case "llega":
-      estadoApp.contadores.pasajeros++;
-      actualizarContadoresUI();
-      agregarLog(`[t=${ev.t}s] Pasajero ${ev.pasajero} llegó (Piso ${ev.preferencia || 1})`, "info");
+    case 'llega':
+      estado.llegaron++;
+      registrar(ev, `Pasajero ${ev.pasajero} llega (prefiere piso ${ev.preferencia})`);
       break;
 
-    case "intenta":
-      marcarAsientoEnProceso(ev.asiento);
+    case 'intenta':      // el hilo tomó el mutex del asiento y está pagando
+      pintarAsiento(ev.asiento, 'en-proceso');
+      registrar(ev, `Pasajero ${ev.pasajero} bloquea asiento ${ev.asiento} y paga…`);
       break;
 
-    case "compra":
-      estadoApp.contadores.vendidos++;
-      if (estadoApp.contadores.libres > 0) estadoApp.contadores.libres--;
-      actualizarContadoresUI();
-      reproducirEfecto("compra");
-      marcarAsientoComprado(ev.asiento);
-      agregarLog(`[t=${ev.t}s] ✅ Pasajero ${ev.pasajero} compró asiento #${ev.asiento}`, "exito");
+    case 'compra':       // pagó y liberó el mutex
+      estado.vendidos.add(ev.asiento);
+      pintarAsiento(ev.asiento, 'comprado');
+      registrar(ev, `Pasajero ${ev.pasajero} compró asiento ${ev.asiento}`, 'compra');
       break;
 
-    case "rechazo":
-      estadoApp.contadores.rechazos++;
-      actualizarContadoresUI();
-      reproducirEfecto("rechazo");
-      animarRechazo(ev.asiento);
-      agregarLog(`[t=${ev.t}s] ❌ Asiento #${ev.asiento} ocupado`, "error");
+    case 'rechazo':      // el mutex estaba tomado o el asiento ya vendido
+      estado.rechazos++;
+      sacudirAsiento(ev.asiento);
+      registrar(ev, `Pasajero ${ev.pasajero}: asiento ${ev.asiento} ocupado`, 'rechazo');
       break;
 
-    case "sin_boleto":
-      estadoApp.contadores.sinBoleto++;
-      actualizarContadoresUI();
-      agregarLog(`[t=${ev.t}s] ⚠️ Pasajero ${ev.pasajero} sin boleto`, "alerta");
+    case 'sin_boleto':
+      estado.sinBoleto++;
+      registrar(ev, `Pasajero ${ev.pasajero} se queda sin boleto (${ev.motivo.replace('_', ' ')})`, 'sin_boleto');
       break;
 
-    case "fin":
-      agregarLog(`[t=${ev.t}s] 🏁 Simulación finalizada`, "sistema");
-      actualizarEstadoBotones(false);
+    case 'fin':
+      detenerReloj();
+      mostrarTiempo(Math.min(ev.t, estado.config.duracion));
+      registrar(ev, `Fin: ${ev.vendidos} vendidos, ${ev.libres} libres`, 'sistema');
       mostrarResumen(ev);
       break;
   }
+  actualizarContadores();
 }
 
-let fuenteSeleccionada = 'simulado';
-let fuenteInstanciaActiva = null;
+/* =========================================================
+ * 3. CONTADORES, RELOJ Y REGISTRO
+ * ========================================================= */
+function actualizarContadores() {
+  const total = estado.config ? estado.config.asientos : 0;
+  const piso1 = estado.config ? estado.config.piso1 : 0;
+  const vendidosPiso1 = [...estado.vendidos].filter(id => id <= piso1).length;
 
-document.addEventListener('DOMContentLoaded', () => {
-  inicializarTema();
+  $('cnt-llegaron').textContent = estado.llegaron;
+  $('cnt-vendidos').textContent = estado.vendidos.size;
+  $('cnt-libres').textContent = total - estado.vendidos.size;
+  $('cnt-rechazos').textContent = estado.rechazos;
+  $('cnt-sin-boleto').textContent = estado.sinBoleto;
+  $('ocupacion-piso-1').textContent = `${vendidosPiso1} / ${piso1}`;
+  $('ocupacion-piso-2').textContent = `${estado.vendidos.size - vendidosPiso1} / ${total - piso1}`;
+}
 
-  dibujarBus({
-    asientos: 48,
-    piso1: 12,
-    piso2: 36,
-    pasajeros: 80,
-    duracion: 30
-  });
+function iniciarReloj() {
+  estado.relojInicio = performance.now();
+  clearInterval(estado.relojTimer);
+  estado.relojTimer = setInterval(() => {
+    const segundos = (performance.now() - estado.relojInicio) / 1000;
+    mostrarTiempo(Math.min(segundos, estado.config.duracion));
+  }, 100);
+}
 
-  const botones = document.querySelectorAll('button');
-  
-  botones.forEach(btn => {
-    const texto = btn.innerText.trim().toLowerCase();
-    
-    if (texto.includes('simulada')) {
-      btn.addEventListener('click', (e) => cambiarFuente('simulado', e.currentTarget));
-    } else if (texto.includes('en vivo')) {
-      btn.addEventListener('click', (e) => cambiarFuente('envivo', e.currentTarget));
-    } else if (texto.includes('grabación') || texto.includes('grabacion')) {
-      btn.addEventListener('click', (e) => cambiarFuente('grabacion', e.currentTarget));
+function detenerReloj() {
+  clearInterval(estado.relojTimer);
+}
+
+function mostrarTiempo(segundos) {
+  $('reloj').textContent = segundos.toFixed(2) + ' s';
+  const avance = estado.config ? (segundos / estado.config.duracion) * 100 : 0;
+  $('ruta-progreso').style.width = avance + '%';
+  $('ruta-bus').style.left = avance + '%';
+}
+
+const MAX_LINEAS_LOG = 200;
+
+function registrar(ev, texto, tipo = '') {
+  const log = $('log');
+  const linea = crearElemento('li', tipo);
+  linea.innerHTML = `<span class="t">${ev.t.toFixed(2)}s</span>`;
+  linea.append(texto);
+  log.appendChild(linea);
+  if (log.children.length > MAX_LINEAS_LOG) log.firstChild.remove();
+  log.scrollTop = log.scrollHeight;
+}
+
+/* =========================================================
+ * 4. RESUMEN FINAL (usa los números que calculó el programa C)
+ * ========================================================= */
+function mostrarResumen(fin) {
+  const total = fin.vendidos + fin.libres;
+  $('res-vendidos').textContent = fin.vendidos;
+  $('res-libres').textContent = fin.libres;
+  $('res-sin-boleto').textContent = fin.sin_boleto;
+  $('res-ocupacion').textContent = Math.round((fin.vendidos / total) * 100) + '%';
+
+  $('chips-piso-1').innerHTML = '';
+  $('chips-piso-2').innerHTML = '';
+  for (const id of fin.asientos_vendidos) {
+    const chip = crearElemento('span', 'chip');
+    chip.textContent = id;
+    $(id <= estado.config.piso1 ? 'chips-piso-1' : 'chips-piso-2').appendChild(chip);
+  }
+  setTimeout(() => $('modal-resumen').showModal(), 600);
+}
+
+/* =========================================================
+ * 5. CONTROLES: INICIAR / DETENER / ELEGIR FUENTE
+ * ========================================================= */
+function fuenteElegida() {
+  return document.querySelector('input[name="fuente"]:checked').value;
+}
+
+function leerConfiguracion() {
+  const campos = ['asientos', 'segundos', 'pasajeros', 'semilla'];
+  const config = {};
+  for (const campo of campos) {
+    const input = $('in-' + campo);
+    if (!input.checkValidity()) {
+      mostrarNota(`Revisa "${campo}": debe estar entre ${input.min} y ${input.max}.`, true);
+      return null;
     }
-  });
-});
-
-function cambiarFuente(tipo, elemento) {
-  fuenteSeleccionada = tipo;
-
-  const contenedor = elemento.parentElement;
-  if (contenedor) {
-    const hermanos = contenedor.querySelectorAll('button');
-    hermanos.forEach(b => {
-      b.style.backgroundColor = '#334155';
-      b.style.color = '#94a3b8';
-    });
+    config[campo] = input.value;
   }
-
-  elemento.style.backgroundColor = '#2563eb';
-  elemento.style.color = '#ffffff';
+  return config;
 }
 
-function actualizarEstadoBotones(enEjecucion) {
-  const btnIniciar = document.getElementById('btn-iniciar');
-  const btnDetener = document.getElementById('btn-detener');
+function iniciar() {
+  const tipo = fuenteElegida();
+  const config = leerConfiguracion();
+  if (!config) return;
 
-  if (btnIniciar) btnIniciar.disabled = enEjecucion;
-  if (btnDetener) btnDetener.disabled = !enEjecucion;
-}
+  limpiarPantalla();
+  enEjecucion(true);
 
-// Dentro de limpiarTablero()
-function limpiarTablero() {
-  estadoApp.contadores = {
-    pasajeros: 0,
-    vendidos: 0,
-    libres: 48,
-    rechazos: 0,
-    sinBoleto: 0
-  };
-  actualizarContadoresUI();
-
-  // Resetear reloj a 0.00 s antes de empezar
-  actualizarRelojUI(0);
-
-  reseteaEstadosVisuales();
-
-  const log = document.getElementById('log-eventos');
-  if (log) {
-    log.innerHTML = '<div class="log-linea sistema">[0.00s] Listo para iniciar la simulación.</div>';
-  }
-
-  cerrarModal();
-}
-
-function iniciarSimulacion() {
-  limpiarTablero();
-
-  if (fuenteInstanciaActiva) {
-    fuenteInstanciaActiva.detener();
-  }
-
-  const config = {
-    asientos: 48,
-    segundos: 30,
-    pasajeros: 80,
-    semilla: Math.floor(Math.random() * 1000000).toString()
-  };
-
-  actualizarEstadoBotones(true);
-
-  if (fuenteSeleccionada === 'envivo') {
-    fuenteInstanciaActiva = crearFuenteEnVivo();
-  } else if (fuenteSeleccionada === 'grabacion') {
-    fuenteInstanciaActiva = crearFuenteGrabacion();
-  } else {
-    fuenteInstanciaActiva = typeof crearFuenteSimulada === 'function' 
-      ? crearFuenteSimulada() 
-      : (typeof crearSimuladorJS === 'function' ? crearSimuladorJS() : null);
-  }
-
-  if (fuenteInstanciaActiva) {
-    fuenteInstanciaActiva.iniciar(
-      config, 
-      procesarEvento, 
-      () => {
-        actualizarEstadoBotones(false);
+  estado.fuente = tipo === 'envivo' ? crearFuenteEnVivo() : crearFuenteGrabacion();
+  estado.fuente.iniciar(
+    config,
+    procesarEvento,
+    () => enEjecucion(false),              // terminó bien
+    (mensaje) => {                         // no se pudo
+      enEjecucion(false);
+      if (tipo === 'envivo') {
+        // Plan B automático: reproducir la grabación
+        mostrarNota(mensaje + ' Reproduciendo la grabación.', true);
+        document.querySelector('input[value="grabacion"]').checked = true;
+        actualizarFormulario(false);
+        iniciar();
+      } else {
+        mostrarNota(mensaje, true);
       }
-    );
+    }
+  );
+}
+
+function detener() {
+  if (estado.fuente) estado.fuente.detener();
+  enEjecucion(false);
+}
+
+function enEjecucion(activa) {
+  if (!activa) detenerReloj();
+  $('btn-iniciar').disabled = activa;
+  $('btn-detener').disabled = !activa;
+  document.querySelectorAll('input[name="fuente"]').forEach(r => r.disabled = activa);
+  $('estado').textContent = activa ? 'En curso' : 'Detenido';
+  $('estado').classList.toggle('activo', activa);
+}
+
+function limpiarPantalla() {
+  estado.llegaron = estado.rechazos = estado.sinBoleto = 0;
+  $('log').innerHTML = '';
+  mostrarTiempo(0);
+}
+
+function mostrarNota(texto, esError = false) {
+  $('nota-fuente').textContent = texto;
+  $('nota-fuente').classList.toggle('error', esError);
+}
+
+/* La grabación ya tiene sus valores fijos (48 asientos, 30 s, 80 pasajeros) */
+function actualizarFormulario(limpiarNota = true) {
+  const esGrabacion = fuenteElegida() === 'grabacion';
+  document.querySelectorAll('#form-config input').forEach(i => i.disabled = esGrabacion);
+  if (limpiarNota) {
+    mostrarNota(esGrabacion
+      ? 'Reproduce una ejecución real guardada de bus.c (48 asientos, 30 s, 80 pasajeros).'
+      : 'El servidor ejecuta ./bus con estos valores.');
   }
 }
 
-function detenerSimulacion() {
-  if (fuenteInstanciaActiva) {
-    fuenteInstanciaActiva.detener();
-    fuenteInstanciaActiva = null;
-  }
-  actualizarEstadoBotones(false);
-}
+/* ---------- Arranque ---------- */
+$('btn-iniciar').addEventListener('click', iniciar);
+$('btn-detener').addEventListener('click', detener);
+$('form-config').addEventListener('submit', (e) => { e.preventDefault(); iniciar(); });
+document.querySelectorAll('input[name="fuente"]').forEach(r => r.addEventListener('change', () => actualizarFormulario()));
 
-// ==========================================
-// CONTROL DEL RELOJ DE SIMULACIÓN
-// ==========================================
-function actualizarRelojUI(segundos) {
-  const tFormateado = (typeof segundos === 'number' || !isNaN(parseFloat(segundos)))
-    ? parseFloat(segundos).toFixed(2) + ' s'
-    : '0.00 s';
-
-  // Buscar el elemento por múltiples IDs o clases posibles en index.html
-  const selectores = [
-    'tiempo-simulacion',
-    'tiempo-val',
-    'reloj-simulacion',
-    'cronometro',
-    'tiempo-transcurrido'
-  ];
-
-  selectores.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.innerText = tFormateado;
-  });
-
-  document.querySelectorAll('.tiempo-valor, .reloj-valor').forEach(el => {
-    el.innerText = tFormateado;
-  });
-}
+dibujarBus({ asientos: 48, piso1: 12, duracion: 30 });
+actualizarFormulario();

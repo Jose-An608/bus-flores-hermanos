@@ -1,8 +1,0 @@
-{"evento":"inicio","asientos":48,"piso1":12,"piso2":36,"pasajeros":80,"duracion":30}
-{"evento":"llega","t":0.25,"pasajero":1,"preferencia":1}
-{"evento":"intenta","t":0.50,"pasajero":1,"asiento":1}
-{"evento":"compra","t":0.80,"pasajero":1,"asiento":1,"piso":1}
-{"evento":"llega","t":1.10,"pasajero":2,"preferencia":2}
-{"evento":"intenta","t":1.30,"pasajero":2,"asiento":15}
-{"evento":"compra","t":1.60,"pasajero":2,"asiento":15,"piso":2}
-{"evento":"fin","t":2.00,"vendidos":2,"libres":46,"sin_boleto":78}
