@@ -43,11 +43,11 @@ function dibujarBus(config) {
 function llenarPiso(contenedor, desde, hasta) {
   contenedor.innerHTML = '';
   for (let id = desde, posicion = 0; id <= hasta; id++, posicion++) {
-    // Después de 2 asientos va el pasillo (2 + pasillo + 2)
+    // Cada fila: 2 asientos, pasillo, 2 asientos
     if (posicion % 4 === 2) contenedor.appendChild(crearElemento('div', 'pasillo'));
 
     const asiento = crearElemento('div', 'asiento');
-    asiento.innerHTML = `${id}<span class="icono"></span>`;
+    asiento.innerHTML = `${id}<svg class="icono"><use href="#i-libre"/></svg>`;
     contenedor.appendChild(asiento);
     estado.asientos.set(id, asiento);
     pintarAsiento(id, 'libre');
@@ -60,14 +60,14 @@ function crearElemento(etiqueta, clase) {
   return el;
 }
 
-/* Estados posibles: 'libre', 'en-proceso', 'comprado' */
-const ICONOS = { 'libre': '✓', 'en-proceso': '⏳', 'comprado': '🔒' };
+/* Estados posibles: 'libre', 'en-proceso', 'comprado'.
+   Cada estado tiene su ícono SVG en index.html (#i-libre, #i-en-proceso, #i-comprado). */
 
 function pintarAsiento(id, nuevoEstado) {
   const asiento = estado.asientos.get(id);
   if (!asiento) return;
   asiento.className = 'asiento ' + nuevoEstado;
-  asiento.querySelector('.icono').textContent = ICONOS[nuevoEstado];
+  asiento.querySelector('.icono use').setAttribute('href', '#i-' + nuevoEstado);
   asiento.title = `Asiento ${id}: ${nuevoEstado}`;
 }
 
