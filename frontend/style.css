@@ -99,48 +99,45 @@ h2 { font-size: 1.05rem; font-weight: 700; }
 
 /* ---------- Pisos y asientos ----------
    Piso 1 arriba y piso 2 abajo. Cada piso es el bus visto desde arriba:
-   frente a la izquierda, asientos en columnas (2 + pasillo + 2). */
-.pisos { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+   frente arriba y filas de 4 asientos (2 + pasillo + 2). */
+.pisos { display: flex; flex-direction: column; align-items: center; gap: 22px; min-width: 0; }
 .piso h3 { display: flex; gap: 10px; align-items: baseline; font-size: 1rem; margin-bottom: 8px; }
 .piso h3 small { font-weight: 500; color: var(--texto-suave); font-size: .85rem; }
 
 .carroceria {
-  display: flex; align-items: stretch;
-  width: max-content; max-width: 100%;
-  overflow-x: auto;
+  display: flex; flex-direction: column;
   border: 2px solid #cfd6e1;
-  border-radius: 40px 14px 14px 40px;     /* frente redondeado */
+  border-radius: 40px 40px 14px 14px;     /* frente redondeado */
   background: #fafbfd;
 }
 .frente-bus {
-  width: 58px; flex-shrink: 0;
+  height: 50px;
   display: grid; place-items: center;
-  border-right: 2px dashed var(--borde);
+  border-bottom: 2px dashed var(--borde);
   color: var(--texto-suave); font-size: 1.6rem;
 }
 /* Piso 2: parabrisas panorámico */
 .frente-bus.panoramico {
-  background: linear-gradient(90deg, #dbe7ff 0 14px, transparent 14px);
+  background: linear-gradient(180deg, #dbe7ff 0 14px, transparent 14px);
+  border-radius: 38px 38px 0 0;
 }
 .fondo-bus {
-  width: 34px; flex-shrink: 0;
+  height: 30px;
   display: grid; place-items: center;
-  border-left: 2px dashed var(--borde);
+  border-top: 2px dashed var(--borde);
   color: var(--texto-suave); font-size: 1.1rem;
 }
 
 .grid-asientos {
   display: grid;
-  grid-template-rows: 46px 46px 18px 46px 46px;   /* fila, fila, PASILLO, fila, fila */
-  grid-auto-flow: column;
-  grid-auto-columns: 46px;
+  grid-template-columns: 46px 46px 22px 46px 46px;   /* asiento, asiento, PASILLO, asiento, asiento */
+  grid-auto-rows: 46px;
   gap: 6px;
-  padding: 12px;
+  padding: 12px 16px;
 }
-.pasillo { width: 100%; }
 
 .asiento {
-  border-radius: 10px 6px 6px 10px;   /* respaldo hacia el frente */
+  border-radius: 10px 10px 6px 6px;   /* respaldo hacia el frente */
   border: 2px solid;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-weight: 700; font-size: .9rem; line-height: 1;

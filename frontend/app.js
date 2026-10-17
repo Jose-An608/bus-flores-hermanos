@@ -43,7 +43,7 @@ function dibujarBus(config) {
 function llenarPiso(contenedor, desde, hasta) {
   contenedor.innerHTML = '';
   for (let id = desde, posicion = 0; id <= hasta; id++, posicion++) {
-    // El bus se llena columna por columna: 2 asientos, pasillo, 2 asientos
+    // Cada fila: 2 asientos, pasillo, 2 asientos
     if (posicion % 4 === 2) contenedor.appendChild(crearElemento('div', 'pasillo'));
 
     const asiento = crearElemento('div', 'asiento');
