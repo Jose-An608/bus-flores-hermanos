@@ -5,13 +5,15 @@
 #include <time.h>
 #include <errno.h>
 #include <string.h>
+#include <stdatomic.h>
+#include <poll.h>
 
 /* Estructuras y recursos compartidos */
 struct Asiento {
     int id;
     int piso;
     pthread_mutex_t mutex;
-    int vendido;
+    atomic_int vendido;   /* atómico: se puede leer sin el mutex (vista quizás desactualizada) */
     int comprador;
 };
 
@@ -20,7 +22,7 @@ struct timespec start_time_mono;
 int tiempo_simulacion;
 int s_num;
 int p_num;
-int tiempo_agotado = 0;
+atomic_int tiempo_agotado = 0;   /* atómica: la leen todos los hilos y la escribe main */
 int modo_json = 0;
 int semilla_base = -1;
 
@@ -149,7 +151,7 @@ void *rutina_pasajero(void *arg) {
                 
                 pthread_mutex_lock(&mutex_impresion);
                 if (modo_json) {
-                    printf("{\"t\":%.2f,\"evento\":\"rechazo\",\"pasajero\":%d,\"asiento\":%d,\"motivo\":\"ocupado\"}\n", get_time_t(), id, asientos[target].id);
+                    printf("{\"t\":%.2f,\"evento\":\"rechazo\",\"pasajero\":%d,\"asiento\":%d,\"motivo\":\"vendido\"}\n", get_time_t(), id, asientos[target].id);
                 } else {
                     printf("[%.2fs] Pasajero %d rechazo en asiento %d (ya vendido)\n", get_time_t(), id, asientos[target].id);
                 }
@@ -213,6 +215,104 @@ void *rutina_pasajero(void *arg) {
     return NULL;
 }
 
+/* =====================================================================
+ * COMPRA MANUAL: el usuario es un pasajero más (pasajero 0).
+ * Recibe órdenes "comprar N" por la entrada estándar (desde la página web
+ * a través de server.js, o escribiéndolas en la terminal).
+ * Usa EXACTAMENTE el mismo protocolo que los otros hilos:
+ *     trylock -> ¿ya vendido? -> pagar -> marcar vendido -> unlock
+ * ===================================================================== */
+#define USUARIO 0
+#define PAGO_USUARIO_US 1500000   /* 1.5 s de pago, para que se vea el asiento amarillo */
+
+/* Imprime un evento del usuario en JSON o en texto, sin mezclarse con otros hilos */
+static void anunciar(const char *json, const char *texto) {
+    pthread_mutex_lock(&mutex_impresion);
+    if (modo_json) printf("{\"t\":%.2f,%s}\n", get_time_t(), json);
+    else           printf("[%.2fs] USUARIO %s\n", get_time_t(), texto);
+    pthread_mutex_unlock(&mutex_impresion);
+}
+
+static void comprar_manual(struct Asiento *a) {
+    char json[160], texto[96];
+
+    /* ¿Ya no quedan asientos? */
+    pthread_mutex_lock(&mutex_contadores);
+    int lleno = (cont_vendidos >= s_num);
+    pthread_mutex_unlock(&mutex_contadores);
+    if (lleno) {
+        snprintf(json, sizeof json, "\"evento\":\"rechazo\",\"pasajero\":%d,\"asiento\":%d,\"motivo\":\"bus_lleno\"", USUARIO, a->id);
+        snprintf(texto, sizeof texto, "no pudo comprar el asiento %d (bus lleno)", a->id);
+        anunciar(json, texto);
+        return;
+    }
+
+    /* 1. Intentar tomar el mutex del asiento SIN esperar */
+    if (pthread_mutex_trylock(&a->mutex) == EBUSY) {
+        /* Otro hilo lo tiene tomado: está pagando ese asiento ahora mismo */
+        pthread_mutex_lock(&mutex_contadores);
+        cont_rechazos++;
+        pthread_mutex_unlock(&mutex_contadores);
+        snprintf(json, sizeof json, "\"evento\":\"rechazo\",\"pasajero\":%d,\"asiento\":%d,\"motivo\":\"ocupado\"", USUARIO, a->id);
+        snprintf(texto, sizeof texto, "rechazado en el asiento %d (otro hilo tiene el mutex)", a->id);
+        anunciar(json, texto);
+        return;
+    }
+
+    /* 2. Tenemos el mutex: revisar si alguien ya lo compró antes */
+    if (a->vendido) {
+        pthread_mutex_unlock(&a->mutex);
+        pthread_mutex_lock(&mutex_contadores);
+        cont_rechazos++;
+        pthread_mutex_unlock(&mutex_contadores);
+        snprintf(json, sizeof json, "\"evento\":\"rechazo\",\"pasajero\":%d,\"asiento\":%d,\"motivo\":\"vendido\"", USUARIO, a->id);
+        snprintf(texto, sizeof texto, "rechazado en el asiento %d (ya vendido)", a->id);
+        anunciar(json, texto);
+        return;
+    }
+
+    /* 3. Pagar con el mutex tomado: nadie más puede entrar a este asiento */
+    snprintf(json, sizeof json, "\"evento\":\"intenta\",\"pasajero\":%d,\"asiento\":%d,\"piso\":%d,\"intento\":1", USUARIO, a->id, a->piso);
+    snprintf(texto, sizeof texto, "bloquea el asiento %d y paga...", a->id);
+    anunciar(json, texto);
+    usleep(PAGO_USUARIO_US);
+
+    /* 4. Marcar vendido y liberar el mutex */
+    a->vendido = 1;
+    a->comprador = USUARIO;
+    pthread_mutex_unlock(&a->mutex);
+
+    pthread_mutex_lock(&mutex_contadores);
+    cont_vendidos++;
+    pthread_mutex_unlock(&mutex_contadores);
+
+    snprintf(json, sizeof json, "\"evento\":\"compra\",\"pasajero\":%d,\"asiento\":%d,\"piso\":%d", USUARIO, a->id, a->piso);
+    snprintf(texto, sizeof texto, "compro el asiento %d (Piso %d)", a->id, a->piso);
+    anunciar(json, texto);
+}
+
+/* Hilo que escucha las órdenes del usuario mientras dura la simulación */
+void *rutina_usuario(void *arg) {
+    (void)arg;
+    char linea[64];
+    setvbuf(stdin, NULL, _IONBF, 0);   /* sin buffer: poll() ve cada orden apenas llega */
+
+    while (!tiempo_agotado) {
+        /* Esperar una orden hasta 200 ms; así revisamos tiempo_agotado seguido */
+        struct pollfd entrada = { .fd = STDIN_FILENO, .events = POLLIN };
+        if (poll(&entrada, 1, 200) <= 0) continue;
+
+        if (fgets(linea, sizeof linea, stdin) == NULL) break;   /* nadie enviará más órdenes */
+
+        int numero;
+        if (sscanf(linea, "comprar %d", &numero) != 1 || numero < 1 || numero > s_num) continue;
+        if (tiempo_agotado) break;
+
+        comprar_manual(&asientos[numero - 1]);
+    }
+    return NULL;
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 4) {
         fprintf(stderr, "Uso: %s <asientos> <segundos> <pasajeros> [--json] [--semilla N]\n", argv[0]);
@@ -272,12 +372,17 @@ int main(int argc, char *argv[]) {
         pthread_create(&hilos[i], NULL, rutina_pasajero, id_pasajero);
     }
 
+    /* Un hilo más para las compras manuales del usuario */
+    pthread_t hilo_usuario;
+    pthread_create(&hilo_usuario, NULL, rutina_usuario, NULL);
+
     sleep(tiempo_simulacion);
     tiempo_agotado = 1;
 
     for (int i = 0; i < p_num; i++) {
         pthread_join(hilos[i], NULL);
     }
+    pthread_join(hilo_usuario, NULL);
 
     /* Evento: fin */
     int libres = 0;

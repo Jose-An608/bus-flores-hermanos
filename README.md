@@ -26,6 +26,26 @@ bus.c (hilos + mutex) ──JSON por línea──▶ server.js ──SSE──�
 | `frontend/app.js` | Dibuja asientos, contadores, registro y resumen |
 | `grabaciones/eventos_demo.jsonl` | Salida real de `./bus 48 30 80 --json --semilla 7` |
 
+## Compra manual: el usuario compite con los hilos
+
+Con **Programa C (en vivo)** puedes hacer clic en un asiento mientras corre la simulación.
+
+1. La página llama a `/comprar?asiento=N`.
+2. `server.js` escribe `comprar N` en la entrada estándar de `./bus`.
+3. En `bus.c`, el **hilo del usuario** (pasajero 0) compra con el mismo protocolo que los demás: `trylock` → ¿ya vendido? → pagar → `unlock`.
+
+| Haces clic en… | Resultado | Por qué |
+|---|---|---|
+| Asiento verde | Lo compras (amarillo → rojo con borde azul) | El mutex estaba libre |
+| Asiento amarillo | Rechazo "ocupado" | `trylock` devuelve `EBUSY`: otro hilo tiene el mutex |
+| Asiento rojo | Rechazo "vendido" | Tomas el mutex, pero `vendido == 1` |
+
+También funciona en la terminal: ejecuta `./bus 10 20 15` y escribe `comprar 5`.
+
+El mutex garantiza que **nunca** se venda un asiento dos veces, pero no garantiza un orden de llegada: si dos hilos lo piden casi a la vez, el sistema operativo decide quién entra primero.
+
+La versión anterior de `bus.c` (sin compra manual) está guardada en `backend/respaldo/bus_v1.c`.
+
 ## Ejecutar en Ubuntu / WSL
 
 ```bash
