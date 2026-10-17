@@ -45,12 +45,16 @@ h2 { font-size: 1.05rem; font-weight: 700; }
 }
 .marca { display: flex; align-items: center; gap: 14px; }
 .logo {
-  font-size: 1.8rem;
   background: var(--primario-suave);
+  color: var(--primario);
   border-radius: 12px;
   width: 52px; height: 52px;
   display: grid; place-items: center;
 }
+.ic-bus { width: 36px; height: 23px; }
+
+/* Íconos SVG: toman el color del texto que los rodea */
+.ic { width: 1.1em; height: 1.1em; vertical-align: -0.18em; flex-shrink: 0; }
 .marca h1 { font-size: 1.5rem; letter-spacing: -.01em; }
 .marca p { margin: 2px 0 0; color: var(--texto-suave); font-size: .9rem; }
 
@@ -60,8 +64,9 @@ h2 { font-size: 1.05rem; font-weight: 700; }
 .ruta-progreso { height: 100%; width: 0; background: var(--primario); border-radius: 99px; transition: width .3s linear; }
 .ruta-bus {
   position: absolute; top: 50%; left: 0;
-  transform: translate(-50%, -55%) scaleX(-1);
-  font-size: 1.3rem;
+  width: 34px; height: 21px;
+  color: var(--primario);
+  transform: translate(-50%, -62%);
   transition: left .3s linear;
 }
 
@@ -90,35 +95,58 @@ h2 { font-size: 1.05rem; font-weight: 700; }
 /* ---------- Leyenda ---------- */
 .leyenda { list-style: none; display: flex; flex-wrap: wrap; gap: 16px; margin: 0; padding: 0; font-size: .85rem; color: var(--texto-suave); }
 .leyenda li { display: flex; align-items: center; gap: 6px; }
-.muestra { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; font-size: .7rem; border: 2px solid; }
+.muestra { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; font-size: .8rem; border: 2px solid; animation: none; }
 
-/* ---------- Pisos y asientos ---------- */
-.pisos { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; align-items: start; }
-.piso {
-  border: 2px solid var(--borde);
-  border-radius: 28px 28px 14px 14px;
-  padding: 16px;
+/* ---------- Pisos y asientos ----------
+   Piso 1 arriba y piso 2 abajo. Cada piso es el bus visto desde arriba:
+   frente a la izquierda, asientos en columnas (2 + pasillo + 2). */
+.pisos { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.piso h3 { display: flex; gap: 10px; align-items: baseline; font-size: 1rem; margin-bottom: 8px; }
+.piso h3 small { font-weight: 500; color: var(--texto-suave); font-size: .85rem; }
+
+.carroceria {
+  display: flex; align-items: stretch;
+  width: max-content; max-width: 100%;
+  overflow-x: auto;
+  border: 2px solid #cfd6e1;
+  border-radius: 40px 14px 14px 40px;     /* frente redondeado */
   background: #fafbfd;
 }
-.piso h3 { display: flex; justify-content: space-between; align-items: baseline; font-size: 1rem; margin-bottom: 10px; }
-.piso h3 small { font-weight: 500; color: var(--texto-suave); font-size: .85rem; }
 .frente-bus {
-  text-align: center; font-size: .78rem; color: var(--texto-suave);
-  border: 1px dashed var(--borde); border-radius: 10px; padding: 6px; margin-bottom: 12px;
+  width: 58px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-right: 2px dashed var(--borde);
+  color: var(--texto-suave); font-size: 1.6rem;
+}
+/* Piso 2: parabrisas panorámico */
+.frente-bus.panoramico {
+  background: linear-gradient(90deg, #dbe7ff 0 14px, transparent 14px);
+}
+.fondo-bus {
+  width: 34px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-left: 2px dashed var(--borde);
+  color: var(--texto-suave); font-size: 1.1rem;
 }
 
-/* 4 asientos por fila: 2 + pasillo + 2 */
-.grid-asientos { display: grid; grid-template-columns: repeat(2, 54px) 22px repeat(2, 54px); gap: 8px; justify-content: center; }
+.grid-asientos {
+  display: grid;
+  grid-template-rows: 46px 46px 18px 46px 46px;   /* fila, fila, PASILLO, fila, fila */
+  grid-auto-flow: column;
+  grid-auto-columns: 46px;
+  gap: 6px;
+  padding: 12px;
+}
+.pasillo { width: 100%; }
 
 .asiento {
-  height: 54px;
-  border-radius: 10px 10px 6px 6px;
+  border-radius: 10px 6px 6px 10px;   /* respaldo hacia el frente */
   border: 2px solid;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  font-weight: 700; font-size: .95rem;
+  font-weight: 700; font-size: .9rem; line-height: 1;
   transition: background-color .2s, color .2s, border-color .2s;
 }
-.asiento .icono { font-size: .7rem; line-height: 1; margin-top: 2px; }
+.asiento .icono { width: 13px; height: 13px; margin-top: 3px; }
 
 .libre      { background: var(--libre-fondo);   border-color: var(--libre);   color: var(--libre); }
 .en-proceso { background: var(--proceso-fondo); border-color: var(--proceso); color: var(--proceso); animation: pulso 1s ease-in-out infinite; }
@@ -139,6 +167,7 @@ h2 { font-size: 1.05rem; font-weight: 700; }
   padding: 10px 6px; border-radius: 10px; border: 2px solid var(--borde);
   font-weight: 600; font-size: .9rem;
 }
+.selector-fuente .ic { width: 1.2em; height: 1.2em; }
 .selector-fuente small { display: block; font-weight: 500; color: var(--texto-suave); font-size: .75rem; }
 .selector-fuente input:checked + span { border-color: var(--primario); background: var(--primario-suave); color: var(--primario); }
 .selector-fuente input:focus-visible + span { outline: 3px solid var(--primario); outline-offset: 2px; }
@@ -211,11 +240,10 @@ h2 { font-size: 1.05rem; font-weight: 700; }
 
 /* ---------- Pantallas pequeñas ---------- */
 @media (max-width: 1100px) {
-  .contenido { grid-template-columns: 1fr; }
+  .contenido { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 700px) {
   .encabezado, .contenido { padding-left: 16px; padding-right: 16px; }
-  .pisos { grid-template-columns: 1fr; }
   .resumen-numeros { grid-template-columns: repeat(2, 1fr); }
 }
 .modal .acciones { grid-template-columns: 1fr; }

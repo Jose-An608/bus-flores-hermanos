@@ -10,10 +10,53 @@
 </head>
 <body>
 
+  <!-- ============ ÍCONOS SVG ============
+       Se dibujan una sola vez aquí y se reutilizan con <use href="#nombre">. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <!-- Bus visto de costado (logo y marcador de la ruta) -->
+      <symbol id="i-bus" viewBox="0 0 64 40">
+        <rect x="2" y="4" width="58" height="26" rx="5" fill="currentColor"/>
+        <rect x="7" y="8" width="9" height="8" rx="1.5" fill="#fff"/>
+        <rect x="19" y="8" width="9" height="8" rx="1.5" fill="#fff"/>
+        <rect x="31" y="8" width="9" height="8" rx="1.5" fill="#fff"/>
+        <rect x="43" y="8" width="13" height="12" rx="1.5" fill="#fff"/>
+        <rect x="2" y="21" width="38" height="2.5" fill="#fff" opacity=".5"/>
+        <circle cx="15" cy="31" r="5.5" fill="#18202b"/><circle cx="15" cy="31" r="2" fill="#fff"/>
+        <circle cx="47" cy="31" r="5.5" fill="#18202b"/><circle cx="47" cy="31" r="2" fill="#fff"/>
+      </symbol>
+      <!-- Estados del asiento -->
+      <symbol id="i-libre" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12.5l4.5 4.5L19 7.5"/>
+      </symbol>
+      <symbol id="i-en-proceso" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>
+      </symbol>
+      <symbol id="i-comprado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5" y="10.5" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>
+      </symbol>
+      <!-- Fuentes de datos -->
+      <symbol id="i-chip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/>
+        <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>
+      </symbol>
+      <symbol id="i-archivo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>
+      </symbol>
+      <!-- Frente del bus -->
+      <symbol id="i-volante" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M3.5 10h6M14.5 10h6M12 14.5V21"/>
+      </symbol>
+      <symbol id="i-escalera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 20h5v-5h5v-5h5V5h3"/>
+      </symbol>
+    </defs>
+  </svg>
+
   <!-- ============ ENCABEZADO ============ -->
   <header class="encabezado">
     <div class="marca">
-      <span class="logo" aria-hidden="true">🚌</span>
+      <span class="logo"><svg class="ic-bus" aria-hidden="true"><use href="#i-bus"/></svg></span>
       <div>
         <h1>Flores Hermanos</h1>
         <p>Simulación de venta de pasajes con hilos (pthreads) y mutex · Sistemas Operativos</p>
@@ -25,7 +68,7 @@
       <span class="ciudad">Tacna</span>
       <div class="ruta-linea">
         <div id="ruta-progreso" class="ruta-progreso"></div>
-        <span id="ruta-bus" class="ruta-bus" aria-hidden="true">🚌</span>
+        <svg id="ruta-bus" class="ruta-bus" aria-hidden="true"><use href="#i-bus"/></svg>
       </div>
       <span class="ciudad">Lima</span>
     </div>
@@ -38,22 +81,32 @@
       <div class="tarjeta-titulo">
         <h2>Asientos del bus</h2>
         <ul class="leyenda">
-          <li><span class="muestra libre">✓</span> Libre</li>
-          <li><span class="muestra en-proceso">⏳</span> Pagando (mutex tomado)</li>
-          <li><span class="muestra comprado">🔒</span> Vendido</li>
+          <li><span class="muestra libre"><svg class="ic"><use href="#i-libre"/></svg></span> Libre</li>
+          <li><span class="muestra en-proceso"><svg class="ic"><use href="#i-en-proceso"/></svg></span> Pagando (mutex tomado)</li>
+          <li><span class="muestra comprado"><svg class="ic"><use href="#i-comprado"/></svg></span> Vendido</li>
         </ul>
       </div>
 
+      <!-- Cada piso se ve desde arriba: el frente del bus a la izquierda,
+           2 filas de asientos + pasillo + 2 filas. -->
       <div class="pisos">
         <div class="piso">
           <h3>Piso 1 <small id="ocupacion-piso-1">0 / 0</small></h3>
-          <div class="frente-bus">🛞 Conductor</div>
-          <div id="grid-piso-1" class="grid-asientos"></div>
+          <div class="carroceria">
+            <div class="frente-bus" title="Cabina del conductor">
+              <svg class="ic"><use href="#i-volante"/></svg>
+            </div>
+            <div id="grid-piso-1" class="grid-asientos"></div>
+            <div class="fondo-bus" title="Escalera al piso 2"><svg class="ic"><use href="#i-escalera"/></svg></div>
+          </div>
         </div>
         <div class="piso">
           <h3>Piso 2 <small id="ocupacion-piso-2">0 / 0</small></h3>
-          <div class="frente-bus">🪟 Ventana panorámica</div>
-          <div id="grid-piso-2" class="grid-asientos"></div>
+          <div class="carroceria">
+            <div class="frente-bus panoramico" title="Ventana panorámica"></div>
+            <div id="grid-piso-2" class="grid-asientos"></div>
+            <div class="fondo-bus" title="Escalera al piso 1"><svg class="ic"><use href="#i-escalera"/></svg></div>
+          </div>
         </div>
       </div>
     </section>
@@ -68,11 +121,11 @@
         <div class="selector-fuente" role="radiogroup" aria-label="Origen de los datos">
           <label>
             <input type="radio" name="fuente" value="envivo" checked>
-            <span>⚙️ Programa C <small>en vivo</small></span>
+            <span><svg class="ic"><use href="#i-chip"/></svg> Programa C <small>en vivo</small></span>
           </label>
           <label>
             <input type="radio" name="fuente" value="grabacion">
-            <span>📁 Grabación <small>respaldo</small></span>
+            <span><svg class="ic"><use href="#i-archivo"/></svg> Grabación <small>respaldo</small></span>
           </label>
         </div>
 
