@@ -1,73 +1,40 @@
-/* =====================================================================
- * bus.c · Flores Hermanos · Sistemas Operativos
- *
- * Simula la venta de pasajes de un bus de 2 pisos. Cada pasajero es un
- * HILO (pthread) y cada asiento tiene su propio MUTEX, así que nunca se
- * vende un asiento dos veces aunque muchos hilos compren a la vez.
- *
- * Idea en una frase: main crea un hilo por pasajero; cada hilo llega a su
- * hora, elige un asiento e intenta tomar su mutex con trylock. Si lo
- * consigue, confirma que sigue libre, paga con el candado tomado y lo
- * suelta; si no, prueba otro asiento (hasta 3 veces).
- *
- * Uso:  ./bus <asientos> <segundos> <pasajeros> [--json] [--semilla N]
- *
- * Las secciones están numeradas en el orden en que se ejecutan (igual que
- * en explicacion_bus_c.pdf): 1 librerías, 2 variables, 3 main (al final
- * del archivo), 4 rutina de cada pasajero, 5 hilo del usuario.
- * ===================================================================== */
-
-/* ---------- 1. LIBRERÍAS ---------- */
 #include <stdio.h>
 #include <stdlib.h>
-#include <pthread.h>     /* hilos y mutex: pthread_create, pthread_mutex_* */
-#include <unistd.h>      /* usleep, sleep */
+#include <pthread.h>
+#include <unistd.h>
 #include <time.h>
-#include <errno.h>       /* EBUSY: lo que devuelve trylock si el mutex está tomado */
+#include <errno.h>
 #include <string.h>
-#include <stdatomic.h>   /* atomic_int: variables que varios hilos leen/escriben sin carrera */
-#include <poll.h>        /* poll: esperar órdenes del usuario sin bloquearse para siempre */
+#include <stdatomic.h>
+#include <poll.h>
 
-/* ---------- 2. EL ASIENTO Y LAS VARIABLES GLOBALES ---------- */
-
-/* Cada asiento es un objeto con su PROPIO candado (lo pide el enunciado).
-   Con un mutex por asiento, dos pasajeros solo se bloquean si quieren
-   el mismo asiento; los demás compran en paralelo. */
+/* Estructuras y recursos compartidos */
 struct Asiento {
-    int id;                 /* número del asiento, de 1 a s_num */
-    int piso;               /* 1 o 2 */
-    pthread_mutex_t mutex;  /* el candado de ESTE asiento */
-    atomic_int vendido;     /* 0 = libre, 1 = vendido. Atómico: se puede MIRAR sin el
-                               mutex (vista quizás desactualizada); la decisión final
-                               siempre se toma con el mutex tomado */
-    int comprador;          /* id del pasajero que lo compró (0 = el usuario) */
+    int id;
+    int piso;
+    pthread_mutex_t mutex;
+    atomic_int vendido;
+    int comprador;
 };
 
-/* Variables globales = recursos compartidos por TODOS los hilos.
-   Las que se modifican están protegidas con un mutex o son atómicas. */
+time_t tiempo_inicio;
+struct timespec start_time_mono;
+int tiempo_simulacion;
+int s_num;
+int p_num;
+atomic_int tiempo_agotado = 0;   /* la escribe main y la leen todos los hilos */
+int modo_json = 0;
+int semilla_base = -1;
 
-time_t tiempo_inicio;            /* inicio de la simulación (segundos). Solo la escribe main */
-struct timespec start_time_mono; /* reloj preciso para el campo "t" de cada evento */
-int tiempo_simulacion;           /* duración total en segundos (solo lectura) */
-int s_num;                       /* número de asientos, ids de 1 a n (solo lectura) */
-int p_num;                       /* número de pasajeros = número de hilos (solo lectura) */
-atomic_int tiempo_agotado = 0;   /* aviso de "se acabó el tiempo": lo escribe main y lo
-                                    leen todos los hilos; atómica para evitar carreras */
-int modo_json = 0;               /* 1 = imprimir eventos en JSON (para la página web) */
-int semilla_base = -1;           /* -1 = aleatorio; otro valor = resultados repetibles */
-
-/* Contadores del resumen: protegidos por mutex_contadores.
-   OJO: "cont_vendidos++" son 3 pasos (leer, sumar, escribir); sin mutex,
-   dos hilos a la vez podrían perder una venta. */
 int cont_vendidos = 0;
 int cont_rechazos = 0;
 int cont_sin_boleto = 0;
 
-pthread_mutex_t mutex_contadores;  /* protege los 3 contadores */
-pthread_mutex_t mutex_impresion;   /* un solo hilo imprime a la vez: las líneas no se mezclan */
-struct Asiento *asientos;          /* arreglo con los s_num asientos del bus */
+pthread_mutex_t mutex_contadores;   /* protege los contadores */
+pthread_mutex_t mutex_impresion;    /* evita que se mezclen las lineas */
+struct Asiento *asientos;
 
-/* Segundos transcurridos desde el inicio (se imprime con 2 decimales) */
+/* Funcion auxiliar para calcular segundos transcurridos con 2 decimales */
 double get_time_t() {
     struct timespec current;
     clock_gettime(CLOCK_MONOTONIC, &current);
@@ -76,15 +43,11 @@ double get_time_t() {
     return elapsed;
 }
 
-/* ---------- 4. RUTINA_PASAJERO: LO QUE HACE CADA HILO ---------- */
+/* Funcion que ejecuta cada hilo (pasajero) */
 void *rutina_pasajero(void *arg) {
-    int id = *(int*)arg;   /* número de pasajero que le pasó main */
+    int id = *(int*)arg;
     free(arg); 
     
-    /* a) Semilla propia de este hilo. rand_r(&seed) es seguro con hilos porque
-          cada uno guarda su propio estado (rand() normal lo comparte).
-          Con --semilla: semilla + id -> el pasajero repite siempre sus decisiones.
-          Sin semilla: la hora actual -> cada ejecución es distinta. */
     unsigned int seed;
     if (semilla_base >= 0) {
         seed = (unsigned int)(semilla_base + id);
@@ -92,9 +55,7 @@ void *rutina_pasajero(void *arg) {
         seed = (unsigned int)time(NULL) ^ id;
     }
 
-    /* b) Hora de llegada con 3 HORAS PICO (10 %, 40 % y 70 % del tiempo):
-          así muchos hilos llegan casi juntos y compiten por los asientos.
-          El 55 % restante llega en cualquier momento del primer 80 %. */
+    /* 1. Tiempo de llegada: 3 horas pico (10%, 40%, 70%) y el resto aleatorio */
     double proporcion = (double)rand_r(&seed) / RAND_MAX;
     double pct_llegada;
     
@@ -109,9 +70,9 @@ void *rutina_pasajero(void *arg) {
     }
 
     int espera_llegada_us = (int)(pct_llegada * tiempo_simulacion * 1000000);
-    usleep(espera_llegada_us);   /* el hilo "duerme" hasta su hora de llegada */
+    usleep(espera_llegada_us);
 
-    /* Evento: llega. El 70 % prefiere el piso 2 */
+    /* 2. Evento: llega (70% prefiere el piso 2) */
     int pref_piso = (rand_r(&seed) % 100 < 70) ? 2 : 1;
     
     if (!tiempo_agotado) {
@@ -124,7 +85,6 @@ void *rutina_pasajero(void *arg) {
         pthread_mutex_unlock(&mutex_impresion);
     }
 
-    /* Si llegó cuando ya se acabó el tiempo, se va sin boleto */
     if (tiempo_agotado) {
         pthread_mutex_lock(&mutex_contadores);
         cont_sin_boleto++;
@@ -140,19 +100,15 @@ void *rutina_pasajero(void *arg) {
         return NULL;
     }
 
-    /* c) Hasta 3 intentos de compra */
+    /* 3. Hasta 3 intentos */
     int comprado = 0;
     for (int intento = 1; intento <= 3 && !tiempo_agotado && !comprado; intento++) {
-        /* 15 % de las veces mira todo el bus y no solo su piso: provoca más choques */
         int info_desactualizada = (rand_r(&seed) % 100 < 15);
         int target = -1;
         
         int *candidatos = malloc(s_num * sizeof(int));
         int num_candidatos = 0;
         
-        /* Lista de asientos que PARECEN libres. Se lee "vendido" SIN el mutex,
-           solo para elegir: el dato puede cambiar justo después, por eso
-           luego se vuelve a comprobar con el candado tomado (paso e). */
         for (int i = 0; i < s_num; i++) {
             if (asientos[i].vendido == 0) {
                 if (info_desactualizada || asientos[i].piso == pref_piso) {
@@ -161,20 +117,18 @@ void *rutina_pasajero(void *arg) {
             }
         }
 
+        /* se lee vendido sin lock solo para elegir; se confirma despues con el mutex */
         if (num_candidatos > 0) {
             target = candidatos[rand_r(&seed) % num_candidatos];
         }
         free(candidatos);
 
-        if (target == -1) break; /* no ve asientos libres en su piso: se rinde */
+        if (target == -1) break; /* No hay asientos libres visibles */
 
-        /* d) EXCLUSIÓN MUTUA: intentar tomar el candado del asiento SIN esperar.
-              lock() dejaría al hilo bloqueado; trylock() responde al instante:
-              0 = lo tengo, EBUSY = otro hilo lo tiene (está pagando ese asiento). */
+        /* 4. Exclusion mutua con trylock */
         int lock_res = pthread_mutex_trylock(&asientos[target].mutex);
         
-        if (lock_res == EBUSY) {
-            /* Rechazo "ocupado": espera un poco y prueba otro asiento */
+        if (lock_res == EBUSY) {   /* otro hilo esta pagando este asiento */
             pthread_mutex_lock(&mutex_contadores);
             cont_rechazos++;
             pthread_mutex_unlock(&mutex_contadores);
@@ -190,8 +144,6 @@ void *rutina_pasajero(void *arg) {
             usleep(100000 + (rand_r(&seed) % 100000));
             continue;
         } else if (lock_res == 0) {
-            /* e) Ya tengo el candado: confirmar que nadie lo compró antes.
-                  Ahora el dato es seguro porque nadie más puede tocar este asiento. */
             if (asientos[target].vendido == 1) {
                 pthread_mutex_unlock(&asientos[target].mutex);
                 pthread_mutex_lock(&mutex_contadores);
@@ -219,18 +171,15 @@ void *rutina_pasajero(void *arg) {
             }
             pthread_mutex_unlock(&mutex_impresion);
 
-            /* f) SECCIÓN CRÍTICA: pagar (0.3 a 1.2 s) CON el candado tomado.
-                  Mientras tanto, cualquier otro hilo que intente este asiento
-                  recibe EBUSY: por eso nunca se vende dos veces. */
+            /* Simular pago (seccion critica, con el mutex tomado) */
             int tiempo_pago = 300000 + (rand_r(&seed) % 900001); 
             usleep(tiempo_pago);
 
             asientos[target].vendido = 1;
             asientos[target].comprador = id;
             
-            pthread_mutex_unlock(&asientos[target].mutex);   /* liberar el asiento */
+            pthread_mutex_unlock(&asientos[target].mutex);
 
-            /* g) Actualizar el contador con su propio mutex */
             pthread_mutex_lock(&mutex_contadores);
             cont_vendidos++;
             pthread_mutex_unlock(&mutex_contadores);
@@ -248,7 +197,6 @@ void *rutina_pasajero(void *arg) {
         }
     }
 
-    /* h) No compró en 3 intentos (o se llenó el bus, o se acabó el tiempo) */
     if (!comprado) {
         pthread_mutex_lock(&mutex_contadores);
         cont_sin_boleto++;
@@ -268,18 +216,11 @@ void *rutina_pasajero(void *arg) {
     return NULL;
 }
 
-/* ---------- 5. EL HILO DEL USUARIO (COMPRA MANUAL) ----------
- * =====================================================================
- * COMPRA MANUAL: el usuario es un pasajero más (pasajero 0).
- * Recibe órdenes "comprar N" por la entrada estándar (desde la página web
- * a través de server.js, o escribiéndolas en la terminal).
- * Usa EXACTAMENTE el mismo protocolo que los otros hilos:
- *     trylock -> ¿ya vendido? -> pagar -> marcar vendido -> unlock
- * ===================================================================== */
+/* Compra manual: el usuario es el pasajero 0 y recibe "comprar N" por stdin.
+   Usa el mismo protocolo que los pasajeros: trylock, revisar, pagar, unlock */
 #define USUARIO 0
-#define PAGO_USUARIO_US 1500000   /* 1.5 s de pago, para que se vea el asiento amarillo */
+#define PAGO_USUARIO_US 1500000
 
-/* Imprime un evento del usuario en JSON o en texto, sin mezclarse con otros hilos */
 static void anunciar(const char *json, const char *texto) {
     pthread_mutex_lock(&mutex_impresion);
     if (modo_json) printf("{\"t\":%.2f,%s}\n", get_time_t(), json);
@@ -290,7 +231,6 @@ static void anunciar(const char *json, const char *texto) {
 static void comprar_manual(struct Asiento *a) {
     char json[160], texto[96];
 
-    /* ¿Ya no quedan asientos? */
     pthread_mutex_lock(&mutex_contadores);
     int lleno = (cont_vendidos >= s_num);
     pthread_mutex_unlock(&mutex_contadores);
@@ -301,9 +241,7 @@ static void comprar_manual(struct Asiento *a) {
         return;
     }
 
-    /* 1. Intentar tomar el mutex del asiento SIN esperar */
     if (pthread_mutex_trylock(&a->mutex) == EBUSY) {
-        /* Otro hilo lo tiene tomado: está pagando ese asiento ahora mismo */
         pthread_mutex_lock(&mutex_contadores);
         cont_rechazos++;
         pthread_mutex_unlock(&mutex_contadores);
@@ -313,7 +251,6 @@ static void comprar_manual(struct Asiento *a) {
         return;
     }
 
-    /* 2. Tenemos el mutex: revisar si alguien ya lo compró antes */
     if (a->vendido) {
         pthread_mutex_unlock(&a->mutex);
         pthread_mutex_lock(&mutex_contadores);
@@ -325,13 +262,11 @@ static void comprar_manual(struct Asiento *a) {
         return;
     }
 
-    /* 3. Pagar con el mutex tomado: nadie más puede entrar a este asiento */
     snprintf(json, sizeof json, "\"evento\":\"intenta\",\"pasajero\":%d,\"asiento\":%d,\"piso\":%d,\"intento\":1", USUARIO, a->id, a->piso);
     snprintf(texto, sizeof texto, "bloquea el asiento %d y paga...", a->id);
     anunciar(json, texto);
     usleep(PAGO_USUARIO_US);
 
-    /* 4. Marcar vendido y liberar el mutex */
     a->vendido = 1;
     a->comprador = USUARIO;
     pthread_mutex_unlock(&a->mutex);
@@ -345,18 +280,17 @@ static void comprar_manual(struct Asiento *a) {
     anunciar(json, texto);
 }
 
-/* Hilo que escucha las órdenes del usuario mientras dura la simulación */
+/* Hilo que lee las ordenes del usuario */
 void *rutina_usuario(void *arg) {
     (void)arg;
     char linea[64];
-    setvbuf(stdin, NULL, _IONBF, 0);   /* sin buffer: poll() ve cada orden apenas llega */
+    setvbuf(stdin, NULL, _IONBF, 0);
 
     while (!tiempo_agotado) {
-        /* Esperar una orden hasta 200 ms; así revisamos tiempo_agotado seguido */
         struct pollfd entrada = { .fd = STDIN_FILENO, .events = POLLIN };
         if (poll(&entrada, 1, 200) <= 0) continue;
 
-        if (fgets(linea, sizeof linea, stdin) == NULL) break;   /* nadie enviará más órdenes */
+        if (fgets(linea, sizeof linea, stdin) == NULL) break;
 
         int numero;
         if (sscanf(linea, "comprar %d", &numero) != 1 || numero < 1 || numero > s_num) continue;
@@ -367,9 +301,7 @@ void *rutina_usuario(void *arg) {
     return NULL;
 }
 
-/* ---------- 3. MAIN: PREPARA, LANZA LOS HILOS Y ESPERA ---------- */
 int main(int argc, char *argv[]) {
-    /* Leer argumentos: asientos, segundos, pasajeros y opciones */
     if (argc < 4) {
         fprintf(stderr, "Uso: %s <asientos> <segundos> <pasajeros> [--json] [--semilla N]\n", argv[0]);
         return 1;
@@ -394,11 +326,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* Imprimir línea por línea: si no, al ir por un pipe hacia Node.js,
-       los eventos llegarían todos juntos al final */
+    /* Bufferizar salida linea por linea para el pipe de Node.js */
     setvbuf(stdout, NULL, _IOLBF, 0);
 
-    /* a) Crear los asientos y SU candado. El primer cuarto es el piso 1 */
     asientos = malloc(s_num * sizeof(struct Asiento));
     int limite_piso1 = s_num / 4;
     
@@ -424,30 +354,27 @@ int main(int argc, char *argv[]) {
         printf("[0.00s] Simulacion iniciada: %d asientos, %d pasajeros, %d segundos\n", s_num, p_num, tiempo_simulacion);
     }
 
-    /* b) UN HILO POR PASAJERO. Cada uno recibe su número en memoria propia:
-          si se pasara &i, todos los hilos verían la misma variable cambiando. */
+    /* Un hilo por pasajero */
     for (int i = 0; i < p_num; i++) {
         int *id_pasajero = malloc(sizeof(int));
         *id_pasajero = i + 1;
         pthread_create(&hilos[i], NULL, rutina_pasajero, id_pasajero);
     }
 
-    /* Un hilo más para las compras manuales del usuario */
+    /* Hilo para la compra manual */
     pthread_t hilo_usuario;
     pthread_create(&hilo_usuario, NULL, rutina_usuario, NULL);
 
-    /* c) main duerme mientras los hilos compran; luego avisa el fin */
     sleep(tiempo_simulacion);
     tiempo_agotado = 1;
 
-    /* Esperar a que TODOS los hilos terminen. Sin join, el programa podría
-       terminar mientras algún pasajero sigue pagando. */
+    /* Esperar a que terminen todos los hilos */
     for (int i = 0; i < p_num; i++) {
         pthread_join(hilos[i], NULL);
     }
     pthread_join(hilo_usuario, NULL);
 
-    /* d) Evento: fin. Contar libres, armar la lista de vendidos y destruir los mutex */
+    /* Evento: fin */
     int libres = 0;
     char buffer_vendidos[2048] = "[";
     int primero = 1;
@@ -472,7 +399,6 @@ int main(int argc, char *argv[]) {
     if (modo_json) {
         printf("{\"t\":%.2f,\"evento\":\"fin\",\"vendidos\":%d,\"libres\":%d,\"sin_boleto\":%d,\"asientos_vendidos\":%s}\n", get_time_t(), cont_vendidos, libres, cont_sin_boleto, buffer_vendidos);
     } else {
-        /* En terminal: tabla de asientos comprados (lo pide el enunciado) y resumen */
         printf("\n--- RESULTADOS FINALES ---\n");
         printf("Asientos comprados:\n");
         printf("  Asiento | Piso | Comprador\n");
