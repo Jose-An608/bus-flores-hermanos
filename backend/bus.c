@@ -410,6 +410,16 @@ int main(int argc, char *argv[]) {
         printf("{\"t\":%.2f,\"evento\":\"fin\",\"vendidos\":%d,\"libres\":%d,\"sin_boleto\":%d,\"asientos_vendidos\":%s}\n", get_time_t(), cont_vendidos, libres, cont_sin_boleto, buffer_vendidos);
     } else {
         printf("\n--- RESULTADOS FINALES ---\n");
+        printf("Asientos comprados:\n");
+        printf("  Asiento | Piso | Comprador\n");
+        for (int i = 0; i < s_num; i++) {
+            if (asientos[i].vendido) {
+                if (asientos[i].comprador == USUARIO)
+                    printf("  %7d | %4d | USUARIO\n", asientos[i].id, asientos[i].piso);
+                else
+                    printf("  %7d | %4d | Pasajero %d\n", asientos[i].id, asientos[i].piso, asientos[i].comprador);
+            }
+        }
         printf("Resumen: %d vendidos, %d libres, %d sin boleto (Rechazos totales: %d)\n", cont_vendidos, libres, cont_sin_boleto, cont_rechazos);
     }
 
