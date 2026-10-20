@@ -155,7 +155,8 @@ h2 { font-size: 1.05rem; font-weight: 700; }
 /* Compra manual: los asientos se pueden pulsar mientras corre el programa C */
 .compra-manual .asiento { cursor: pointer; }
 .compra-manual .asiento:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(16, 24, 40, .15); }
-.tuyo { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--primario) !important; }
+/* Tu compra: azul con ícono de persona, distinto del rojo "vendido" */
+.comprado.tuyo { background: var(--primario); border-color: var(--primario); color: #fff; }
 
 .aviso {
   margin: -6px 0 16px; padding: 10px 14px; border-radius: 10px;
