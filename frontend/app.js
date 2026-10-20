@@ -71,8 +71,9 @@ function pintarAsiento(id, nuevoEstado) {
   const asiento = estado.asientos.get(id);
   if (!asiento) return;
   asiento.className = 'asiento ' + nuevoEstado;
-  if (estado.tuyos.has(id)) asiento.classList.add('tuyo');
-  asiento.querySelector('.icono use').setAttribute('href', '#i-' + nuevoEstado);
+  const esTuyo = estado.tuyos.has(id) && nuevoEstado === 'comprado';
+  if (esTuyo) asiento.classList.add('tuyo');
+  asiento.querySelector('.icono use').setAttribute('href', esTuyo ? '#i-tuyo' : '#i-' + nuevoEstado);
   asiento.title = `Asiento ${id}: ${nuevoEstado}`;
 }
 
